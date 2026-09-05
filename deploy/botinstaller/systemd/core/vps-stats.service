@@ -1,0 +1,8 @@
+[Unit]
+Description=ZverTBot VPS Statistics Collector
+
+[Service]
+Type=oneshot
+WorkingDirectory={{INSTALL_DIR}}
+Environment=PYTHONPATH={{INSTALL_DIR}}
+ExecStart={{INSTALL_DIR}}/.venv/bin/python {{INSTALL_DIR}}/hass/stats/vps_stats.py

@@ -1,0 +1,18 @@
+[Unit]
+Description=Uptime Kuma Telegram Webhook Listener
+After=network.target
+
+[Service]
+Type=simple
+User=root
+
+WorkingDirectory={{INSTALL_DIR}}
+Environment=PYTHONPATH={{INSTALL_DIR}}
+
+ExecStart={{INSTALL_DIR}}/.venv/bin/python {{INSTALL_DIR}}/hass/kuma/kuma-webhook.py
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

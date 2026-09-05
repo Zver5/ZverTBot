@@ -1,0 +1,70 @@
+# ==========================================================
+# ZverTBot Dual-Protocol (Xray + AmneziaWG)
+# Python dependencies
+#
+# Использование:
+#   python3 -m venv .venv
+#   .venv/bin/pip install --upgrade pip
+#   .venv/bin/pip install -r requirements.txt
+#
+# Обновлено: 21.08.2026
+# ==========================================================
+
+# Telegram Bot API
+pyTelegramBotAPI>=4.36.1
+
+# HTTP/API
+# Используется для внешних API:
+#   - Groq LLM API (OpenAI-compatible endpoint)
+#   - AbuseIPDB API
+requests>=2.34.2
+
+# .env
+python-dotenv>=1.2.3
+
+# Xray gRPC Stats API / GeoIP
+grpcio>=1.83.0
+grpcio-tools>=1.83.0
+maxminddb>=3.1.1
+
+# Testing
+pytest>=9.1.1
+pytest-cov>=7.1.0
+
+# Code quality
+ruff>=0.16.3
+
+# ==========================================================
+# Системные зависимости (APT)
+# ==========================================================
+#
+# python3
+# python3-venv
+# python3-pip
+# python3-dev
+# build-essential
+# qrencode
+# mtr-tiny
+# curl
+# ca-certificates
+#
+# ==========================================================
+# Проверяемые системные команды ZverTBot
+# ==========================================================
+#
+# Обязательные:
+# qrencode       - генерация QR для клиентов
+# mtr            - диагностика сети
+#
+# Внешние сервисы:
+# speedtest      - тест скорости (Ookla)
+#
+# Отдельные разделы установки:
+# xray           - Xray VPN
+# awg            - AmneziaWG VPN
+# fail2ban-client- защита SSH
+# rclone         - резервные копии
+# ssh-keygen     - SSH ключи
+#
+# Docker / Uptime Kuma устанавливаются отдельно
+#

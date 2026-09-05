@@ -1,0 +1,22 @@
+[Unit]
+Description=ZverTBot VPS Backup to Yandex Disk
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory={{INSTALL_DIR}}
+Environment=PYTHONPATH={{INSTALL_DIR}}:{{INSTALL_DIR}}/config
+ExecStart={{INSTALL_DIR}}/scripts/backup-to-yandex.sh
+
+User=root
+Group=root
+
+Nice=10
+TimeoutStartSec=1800
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=no
+ProtectKernelTunables=yes

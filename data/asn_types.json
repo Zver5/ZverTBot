@@ -1,0 +1,37 @@
+{
+  "AS12958": {
+    "name": "T2 Mobile LLC",
+    "type": "mobile",
+    "emoji": "📱"
+  },
+  "AS16345": {
+    "name": "PJSC Vimpelcom",
+    "type": "mobile",
+    "emoji": "📱"
+  },
+  "AS25159": {
+    "name": "PJSC MegaFon",
+    "type": "isp",
+    "emoji": "🏠"
+  },
+  "AS34602": {
+    "name": "MEGASVYAZ LLC",
+    "type": "isp",
+    "emoji": "🏠"
+  },
+  "AS42892": {
+    "name": "PE Filimonov Boris Yurievich",
+    "type": "isp",
+    "emoji": "🏠"
+  },
+  "AS49368": {
+    "name": "DomoLAN Ltd.",
+    "type": "isp",
+    "emoji": "🏠"
+  },
+  "AS8359": {
+    "name": "MTS PJSC",
+    "type": "mobile",
+    "emoji": "📱"
+  }
+}

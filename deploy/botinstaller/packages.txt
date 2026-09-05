@@ -1,0 +1,35 @@
+# Required system packages
+
+python3
+python3-venv
+python3-pip
+python3-dev
+build-essential
+
+git
+rsync
+curl
+ca-certificates
+jq
+openssl
+
+qrencode
+mtr-tiny
+
+# Network / SSH tools
+
+openssh-client
+
+# Diagnostics
+
+
+# Security
+
+fail2ban
+
+# Backup
+rclone
+
+# Firewall persistence
+iptables-persistent
+netfilter-persistent
