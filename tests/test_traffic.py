@@ -287,3 +287,129 @@ def test_rename_client_in_usage_logs_standardized_error(monkeypatch, tmp_path):
         "new",
         error,
     )
+
+
+def test_get_xray_clients_from_config_deduplicates_same_uuid():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "hass/traffic/xray-traffic-collect.py"
+    spec = importlib.util.spec_from_file_location("xray_traffic_collect", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    client_uuid = "7910ef31-fe3b-4b35-8a8b-b869e61efce8"
+
+    cfg = {
+        "inbounds": [
+            {
+                "port": 443,
+                "protocol": "vless",
+                "settings": {
+                    "clients": [
+                        {"email": "ZverX", "id": client_uuid},
+                    ]
+                },
+            },
+            {
+                "port": 2096,
+                "protocol": "vless",
+                "settings": {
+                    "clients": [
+                        {"email": "ZverX", "id": client_uuid},
+                    ]
+                },
+            },
+        ]
+    }
+
+    clients = module.get_xray_clients_from_config(cfg)
+
+    assert clients == [
+        {
+            "id": client_uuid,
+            "name": "ZverX",
+            "inbounds": [443, 2096],
+        }
+    ]
+
+
+def test_collect_deduplicates_xray_client_across_inbounds(monkeypatch, tmp_path):
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "hass/traffic/xray-traffic-collect.py"
+    spec = importlib.util.spec_from_file_location("xray_traffic_collect", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    uuid = "7910ef31-fe3b-4b35-8a8b-b869e61efce8"
+    usage_file = tmp_path / "usage.json"
+    config_file = tmp_path / "config.json"
+
+    usage_file.write_text(json.dumps({
+        "clients": {
+            "ZverX": {
+                "uplink": 500,
+                "downlink": 500,
+                "total": 1000,
+                "_snap_up": 1000,
+                "_snap_down": 2000,
+                "proto": "vless",
+            }
+        }
+    }))
+
+    config_file.write_text(json.dumps({
+        "inbounds": [
+            {
+                "port": 443,
+                "protocol": "vless",
+                "settings": {
+                    "clients": [
+                        {"email": "ZverX", "id": uuid},
+                    ]
+                },
+            },
+            {
+                "port": 2096,
+                "protocol": "vless",
+                "settings": {
+                    "clients": [
+                        {"email": "ZverX", "id": uuid},
+                    ]
+                },
+            },
+        ]
+    }))
+
+    monkeypatch.setattr(module, "OUT", str(usage_file))
+    monkeypatch.setattr(module, "XRAY_CONF", config_file)
+    monkeypatch.setattr(module, "AWG_USERS_JSON", tmp_path / "awg.json")
+
+    calls = []
+
+    def fake_query(name):
+        calls.append(name)
+        if name.endswith("uplink"):
+            return 1100
+        if name.endswith("downlink"):
+            return 2200
+        raise AssertionError(name)
+
+    monkeypatch.setattr(module, "query_xray_stat", fake_query)
+    monkeypatch.setattr(module, "get_xray_last_ips", lambda: {})
+    monkeypatch.setattr(module, "sync_and_archive", lambda data: None)
+
+    module.collect()
+
+    result = json.loads(usage_file.read_text())
+    client = result["clients"]["ZverX"]
+
+    assert calls == [
+        "user>>>ZverX>>>traffic>>>uplink",
+        "user>>>ZverX>>>traffic>>>downlink",
+    ]
+    assert client["uplink"] == 600
+    assert client["downlink"] == 700
+    assert client["total"] == 1300
