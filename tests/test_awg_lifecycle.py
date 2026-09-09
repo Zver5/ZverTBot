@@ -8,7 +8,13 @@ def test_awg_add_and_delete_isolated(monkeypatch, tmp_path):
     fake_conf = tmp_path / "awg0.conf"
     fake_registry = tmp_path / "awg_users.json"
 
-    fake_conf.write_text("[Interface]\nPrivateKey = SERVER_KEY\n\n", encoding="utf-8")
+    fake_conf.write_text(
+        "[Interface]\n"
+        "PrivateKey = SERVER_KEY\n"
+        "Address = 10.66.66.1/24\n"
+        "ListenPort = 58352\n\n",
+        encoding="utf-8",
+    )
 
     fake_registry.write_text("{}", encoding="utf-8")
 
