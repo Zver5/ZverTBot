@@ -16,6 +16,11 @@ def allow_awg_username(monkeypatch):
         "is_username_unique_awg",
         lambda username: True,
     )
+    monkeypatch.setattr(
+        cm,
+        "get_xray_readiness",
+        lambda config: (True, []),
+    )
 
 
 # ==========================================================
@@ -68,6 +73,39 @@ def test_validate_xray_config_exception(monkeypatch):
 # ==========================================================
 # xray_add_user
 # ==========================================================
+
+
+def test_xray_add_user_not_ready(monkeypatch):
+    config = {"inbounds": []}
+    uuid_called = []
+
+    monkeypatch.setattr(cm.shutil, "which", lambda name: "/usr/bin/xray")
+    monkeypatch.setattr(cm, "load_xray_config", lambda: config)
+    monkeypatch.setattr(
+        cm,
+        "get_xray_readiness",
+        lambda cfg: (
+            False,
+            [
+                "VLESS inbound #1: не указан privateKey",
+                "VLESS inbound #1: не указан shortIds",
+            ],
+        ),
+    )
+    monkeypatch.setattr(
+        cm.subprocess,
+        "run",
+        lambda *args, **kwargs: uuid_called.append((args, kwargs)),
+    )
+
+    ok, msg = cm.xray_add_user("user")
+
+    assert ok is False
+    assert "Конфигурация Xray не готова" in msg
+    assert "не указан privateKey" in msg
+    assert "не указан shortIds" in msg
+    assert "Настройте config.json" in msg
+    assert uuid_called == []
 
 
 def test_xray_add_user_invalid_name(monkeypatch):
