@@ -678,17 +678,6 @@ def handle_management_part4_callback(bot, cid, call, data):
         return CallbackResponse()
 
     if data == "create_backup":
-        safe_edit_message(
-            bot,
-            (
-                "⏳ *Создаю бэкап...*\n\n"
-                "Это может занять 1-3 минуты.\n"
-                "Пожалуйста, не закрывайте чат."
-            ),
-            cid,
-            call.message.message_id,
-            parse_mode="Markdown",
-        )
         run_manual_backup(bot, cid, call.message.message_id)
         return CallbackResponse("Запускаю бэкап...")
 
