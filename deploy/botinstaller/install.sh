@@ -235,6 +235,15 @@ install_xray() {
     fi
 
     ok "Xray installed"
+
+    XRAY_DEFAULT_CONF="/usr/local/etc/xray/config.json"
+    XRAY_EXAMPLE="${INSTALL_DIR}/deploy/botinstaller/examples/xray.config.example.json"
+
+    if [ ! -f "$XRAY_DEFAULT_CONF" ] && [ -f "$XRAY_EXAMPLE" ]; then
+        mkdir -p "$(dirname "$XRAY_DEFAULT_CONF")"
+        install -m 644 "$XRAY_EXAMPLE" "$XRAY_DEFAULT_CONF"
+        ok "Xray example config installed: $XRAY_DEFAULT_CONF"
+    fi
 }
 
 
@@ -280,6 +289,15 @@ install_awg() {
     fi
 
     ok "AmneziaWG installed"
+
+    AWG_DEFAULT_CONF="/etc/amnezia/amneziawg/awg0.conf"
+    AWG_EXAMPLE="${INSTALL_DIR}/deploy/botinstaller/examples/awg0.conf.example"
+
+    if [ ! -f "$AWG_DEFAULT_CONF" ] && [ -f "$AWG_EXAMPLE" ]; then
+        mkdir -p "$(dirname "$AWG_DEFAULT_CONF")"
+        install -m 600 "$AWG_EXAMPLE" "$AWG_DEFAULT_CONF"
+        ok "AWG example config installed: $AWG_DEFAULT_CONF"
+    fi
 }
 
 
