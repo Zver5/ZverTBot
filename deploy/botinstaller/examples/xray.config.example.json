@@ -1,0 +1,61 @@
+{
+  "inbounds": [
+    {
+      "tag": "api",
+      "listen": "127.0.0.1",
+      "port": 10085,
+      "protocol": "dokodemo-door",
+      "settings": {
+        "address": "127.0.0.1"
+      }
+    },
+    {
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "00000000-0000-0000-0000-000000000000",
+            "flow": "xtls-rprx-vision",
+            "email": "example",
+            "level": 0
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverNames": ["example.com"],
+          "privateKey": "REPLACE_WITH_XRAY_REALITY_PRIVATE_KEY",
+          "shortIds": ["REPLACE_WITH_REALITY_SHORT_ID"]
+        }
+      }
+    },
+    {
+      "port": 2096,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "00000000-0000-0000-0000-000000000000",
+            "flow": "xtls-rprx-vision",
+            "email": "example",
+            "level": 0
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverNames": ["example.com"],
+          "privateKey": "REPLACE_WITH_XRAY_REALITY_PRIVATE_KEY",
+          "shortIds": ["REPLACE_WITH_REALITY_SHORT_ID"]
+        }
+      }
+    }
+  ]
+}
