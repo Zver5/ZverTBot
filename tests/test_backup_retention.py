@@ -14,7 +14,7 @@ def test_local_retention_sorts_newest_first():
 
 def test_remote_retention_sorts_newest_first():
     assert (
-        """    awk '/vps-backup-.*\\.tar.gz/ {print}' "${REMOTE_BACKUPS_FILE}" | sort -r
+        """    awk '/^vps-backup-.*\\.tar.gz$/ {print}' "${REMOTE_BACKUPS_FILE}" | sort -r
 """
         in SCRIPT
     )

@@ -565,7 +565,13 @@ done < <(
 
 if [ "${#BACKUP_FILES[@]}" -gt 5 ]; then
     for ((i=5; i<${#BACKUP_FILES[@]}; i++)); do
-        rm -f -- "${BACKUP_FILES[$i]#* }"
+        FILE="${BACKUP_FILES[$i]#* }"
+
+        if [ "${FILE}" = "${BACKUP_DIR}/${BACKUP_NAME}" ]; then
+            continue
+        fi
+
+        rm -f -- "${FILE}"
     done
 fi
 
@@ -593,15 +599,19 @@ if ! rclone lsf \
 fi
 
 REMOTE_BACKUPS_TO_DELETE=()
+
 while IFS= read -r FILE; do
+    [ -n "${FILE}" ] || continue
+    [ "${FILE}" = "${BACKUP_NAME}" ] && continue
+
     REMOTE_BACKUPS_TO_DELETE+=("${FILE}")
 done < <(
-    awk '/vps-backup-.*\.tar.gz/ {print}' "${REMOTE_BACKUPS_FILE}" | sort -r
+    awk '/^vps-backup-.*\.tar.gz$/ {print}' "${REMOTE_BACKUPS_FILE}" | sort -r
 )
 
-if [ "${#REMOTE_BACKUPS_TO_DELETE[@]}" -gt 10 ]; then
+if [ "${#REMOTE_BACKUPS_TO_DELETE[@]}" -gt 9 ]; then
     REMOTE_BACKUPS_TO_DELETE=(
-        "${REMOTE_BACKUPS_TO_DELETE[@]:10}"
+        "${REMOTE_BACKUPS_TO_DELETE[@]:9}"
     )
 fi
 
