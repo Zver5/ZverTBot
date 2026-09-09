@@ -423,3 +423,86 @@ def test_validate_xray_config_cleanup_error(tmp_path, monkeypatch):
         and str(call.args[1]) == "cleanup failed"
         for call in mock_error.call_args_list
     )
+
+
+def test_get_xray_readiness_ready():
+    config = sample_config()
+    for inbound in config["inbounds"]:
+        if inbound["protocol"] == "vless":
+            inbound["streamSettings"] = {
+                "network": "tcp",
+                "security": "reality",
+                "realitySettings": {
+                    "serverNames": ["example.com"],
+                    "privateKey": "private-key",
+                    "shortIds": ["abcd1234"],
+                },
+            }
+
+    ready, problems = cm.get_xray_readiness(config)
+
+    assert ready is True
+    assert problems == []
+
+
+def test_get_xray_readiness_allows_empty_clients():
+    config = sample_config()
+    for inbound in config["inbounds"]:
+        if inbound["protocol"] == "vless":
+            inbound["settings"]["clients"] = []
+            inbound["streamSettings"] = {
+                "network": "tcp",
+                "security": "reality",
+                "realitySettings": {
+                    "serverNames": ["example.com"],
+                    "privateKey": "private-key",
+                    "shortIds": ["abcd1234"],
+                },
+            }
+
+    ready, problems = cm.get_xray_readiness(config)
+
+    assert ready is True
+    assert problems == []
+
+
+def test_get_xray_readiness_detects_reality_template():
+    config = sample_config()
+    for inbound in config["inbounds"]:
+        if inbound["protocol"] == "vless":
+            inbound["streamSettings"] = {
+                "network": "tcp",
+                "security": "reality",
+                "realitySettings": {
+                    "serverNames": ["example.com"],
+                    "privateKey": "REPLACE_WITH_XRAY_REALITY_PRIVATE_KEY",
+                    "shortIds": ["abcd1234"],
+                },
+            }
+
+    ready, problems = cm.get_xray_readiness(config)
+
+    assert ready is False
+    assert any("privateKey содержит шаблонное значение" in p for p in problems)
+
+
+def test_get_xray_readiness_detects_missing_reality_fields():
+    config = sample_config()
+    for inbound in config["inbounds"]:
+        if inbound["protocol"] == "vless":
+            inbound["streamSettings"] = {
+                "network": "tcp",
+                "security": "reality",
+                "realitySettings": {
+                    "serverNames": [],
+                    "privateKey": "",
+                    "shortIds": [],
+                },
+            }
+
+    ready, problems = cm.get_xray_readiness(config)
+
+    assert ready is False
+    assert any("не указан privateKey" in p for p in problems)
+    assert any("не указан serverNames" in p for p in problems)
+    assert any("не указан shortIds" in p for p in problems)

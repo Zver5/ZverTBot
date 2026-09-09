@@ -92,6 +92,59 @@ def validate_xray_config_structure(config: dict) -> bool:
     return vless_found
 
 
+def get_xray_readiness(config: dict) -> tuple[bool, list[str]]:
+    """Проверяет, готов ли Xray VLESS Reality к созданию клиентов."""
+    problems: list[str] = []
+
+    if not isinstance(config, dict):
+        return False, ["Конфигурация должна быть JSON объектом"]
+
+    vless_inbounds = get_vless_inbounds(config)
+    if not vless_inbounds:
+        return False, ["VLESS inbound не найден"]
+
+    for index, inbound in enumerate(vless_inbounds, start=1):
+        settings = inbound.get("settings")
+        if not isinstance(settings, dict):
+            problems.append(f"VLESS inbound #{index}: отсутствует settings")
+            continue
+
+        if not isinstance(settings.get("clients"), list):
+            problems.append(f"VLESS inbound #{index}: отсутствует clients")
+
+        stream = inbound.get("streamSettings")
+        if not isinstance(stream, dict):
+            problems.append(f"VLESS inbound #{index}: отсутствует streamSettings")
+            continue
+
+        if stream.get("network") != "tcp":
+            problems.append(f"VLESS inbound #{index}: network должен быть tcp")
+
+        if stream.get("security") != "reality":
+            problems.append(f"VLESS inbound #{index}: security должен быть reality")
+
+        reality = stream.get("realitySettings")
+        if not isinstance(reality, dict):
+            problems.append(f"VLESS inbound #{index}: отсутствует realitySettings")
+            continue
+
+        private_key = reality.get("privateKey")
+        if not private_key:
+            problems.append(f"VLESS inbound #{index}: не указан privateKey")
+        elif str(private_key).startswith("REPLACE_WITH_"):
+            problems.append(f"VLESS inbound #{index}: privateKey содержит шаблонное значение")
+
+        server_names = reality.get("serverNames")
+        if not isinstance(server_names, list) or not any(server_names):
+            problems.append(f"VLESS inbound #{index}: не указан serverNames")
+
+        short_ids = reality.get("shortIds")
+        if not isinstance(short_ids, list) or not any(short_ids):
+            problems.append(f"VLESS inbound #{index}: не указан shortIds")
+
+    return not problems, problems
+
+
 def validate_xray_config(config: dict) -> bool:
     """
     Проверяет candidate-конфигурацию Xray ДО замены рабочего config.json.
