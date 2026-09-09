@@ -39,6 +39,7 @@ BACKUP_DIR="${CONFIG_BACKUPS_DIR:-/root/config-backups}"
 DATE=$(TZ='Europe/Moscow' date +%Y-%m-%d_%H-%M-%S)
 
 BACKUP_NAME="vps-backup-${DATE}.tar.gz"
+BACKUP_START_TIME=$(date +%s)
 
 # Backup configuration is loaded from the project .env.
 BACKUP_REMOTE="${BACKUP_REMOTE:-}"
@@ -633,6 +634,7 @@ SIZE_BYTES=$(stat -c%s "${BACKUP_DIR}/${BACKUP_NAME}" 2>/dev/null || echo 0)
 
 SIZE_MB=$((SIZE_BYTES / 1048576))
 
+BACKUP_DURATION_SEC=$(( $(date +%s) - BACKUP_START_TIME ))
 
 NEXT_RUN=$(TZ='Europe/Moscow' date -d "+8 hours" -Iseconds)
 
@@ -646,6 +648,7 @@ cat > "${STATUS_FILE}" << EOF
   "last_backup": "$(TZ='Europe/Moscow' date -Iseconds)",
   "status": "success",
   "size_mb": ${SIZE_MB},
+  "duration_sec": ${BACKUP_DURATION_SEC},
   "next_run": "${NEXT_RUN}",
   "file_name": "${BACKUP_NAME}"
 }
