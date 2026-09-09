@@ -16,7 +16,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${INSTALL_DIR}/.env"
 SYSTEMD_DIR="/etc/systemd/system"
 
-
 # ---------- Colors ----------
 RED="\033[0;31m"
 GREEN="\033[0;32m"
@@ -42,6 +41,24 @@ fail() {
     echo -e "${RED}[FAIL]${NC} $1"
     exit 1
 }
+
+
+INSTALL_XRAY=false
+INSTALL_AWG=false
+
+for arg in "$@"; do
+    case "$arg" in
+        -xray)
+            INSTALL_XRAY=true
+            ;;
+        -awg)
+            INSTALL_AWG=true
+            ;;
+        *)
+            fail "Unknown option: $arg"
+            ;;
+    esac
+done
 
 
 banner() {
@@ -199,6 +216,48 @@ extract_archive() {
     ok "Project version: $VERSION"
     ok "Archive installed"
 
+}
+
+
+install_xray() {
+
+    if command -v xray >/dev/null 2>&1; then
+        ok "Xray already installed"
+        return
+    fi
+
+    info "Installing Xray"
+
+    bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+
+    if ! command -v xray >/dev/null 2>&1; then
+        fail "Xray installation failed"
+    fi
+
+    ok "Xray installed"
+}
+
+
+install_awg() {
+
+    if command -v awg >/dev/null 2>&1; then
+        ok "AmneziaWG already installed"
+        return
+    fi
+
+    info "Installing AmneziaWG from PPA"
+
+    DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common >/dev/null
+
+    add-apt-repository ppa:amnezia/ppa -y
+    apt-get update -y >/dev/null
+    DEBIAN_FRONTEND=noninteractive apt-get install -y amneziawg-dkms amneziawg-tools >/dev/null
+
+    if ! command -v awg >/dev/null 2>&1; then
+        fail "AmneziaWG installation failed"
+    fi
+
+    ok "AmneziaWG installed"
 }
 
 
@@ -958,6 +1017,15 @@ if [ -f "$TUNING_SCRIPT" ]; then
     bash "$TUNING_SCRIPT"
 else
     warn "system_tuning.sh not found"
+fi
+
+
+if [ "$INSTALL_XRAY" = true ]; then
+    install_xray
+fi
+
+if [ "$INSTALL_AWG" = true ]; then
+    install_awg
 fi
 
 
