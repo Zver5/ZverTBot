@@ -480,7 +480,9 @@ log_info "backup.remote.upload_started | remote=${BACKUP_REMOTE} | file=${BACKUP
 if ! rclone copy \
 "${BACKUP_DIR}/${BACKUP_NAME}" \
 "${BACKUP_REMOTE}:${BACKUP_ROOT_DIR}/configs/" \
---progress; then
+--stats=1s \
+--use-json-log \
+--stats-log-level=INFO; then
     log_error "backup.remote.upload_failed | remote=${BACKUP_REMOTE} | file=${BACKUP_NAME}"
 
     if ! write_failed_status 1 "Failed to upload backup to remote"; then
