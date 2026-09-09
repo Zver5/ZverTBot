@@ -672,7 +672,8 @@ def run_manual_backup(bot, cid, message_id):
                         f"📦 Файл: `{backup_name}`\n"
                         f"📏 Размер: `{size_mb} MB`\n"
                         f"☁️ Загружен на: `{BACKUP_REMOTE}:{BACKUP_ROOT_DIR}/configs/`\n"
-                        f"⏱ Время создания: `{status.get('duration_sec', 'N/A')} секунд`\n"
+                        f"⏱ Время создания: "
+                        f"`{status.get('duration_sec', 'N/A')} секунд`\n"
                         f"📅 Время: "
                         f"`{format_msk_time(status.get('last_backup', '')) or 'N/A'}`"
                     )

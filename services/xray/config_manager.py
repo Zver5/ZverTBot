@@ -132,7 +132,9 @@ def get_xray_readiness(config: dict) -> tuple[bool, list[str]]:
         if not private_key:
             problems.append(f"VLESS inbound #{index}: не указан privateKey")
         elif str(private_key).startswith("REPLACE_WITH_"):
-            problems.append(f"VLESS inbound #{index}: privateKey содержит шаблонное значение")
+            problems.append(
+                f"VLESS inbound #{index}: privateKey содержит шаблонное значение"
+            )
 
         server_names = reality.get("serverNames")
         if not isinstance(server_names, list) or not any(server_names):
