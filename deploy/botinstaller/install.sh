@@ -238,6 +238,28 @@ install_xray() {
 }
 
 
+install_rclone() {
+
+    info "Installing latest rclone"
+
+    if ! curl -fsSL https://rclone.org/install.sh | bash >/dev/null; then
+        fail "rclone installation failed"
+    fi
+
+    if ! command -v rclone >/dev/null 2>&1; then
+        fail "rclone installation failed: binary not found"
+    fi
+
+    RCLONE_VERSION=$(rclone version 2>/dev/null | awk 'NR==1 {print $2}')
+
+    if [ -n "$RCLONE_VERSION" ]; then
+        ok "rclone installed: $RCLONE_VERSION"
+    else
+        ok "rclone installed"
+    fi
+}
+
+
 install_awg() {
 
     if command -v awg >/dev/null 2>&1; then
@@ -1008,6 +1030,7 @@ fi
 
 
 install_packages
+install_rclone
 
 
 # System tuning

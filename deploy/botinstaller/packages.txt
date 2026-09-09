@@ -28,7 +28,6 @@ openssh-client
 fail2ban
 
 # Backup
-rclone
 
 # Firewall persistence
 iptables-persistent

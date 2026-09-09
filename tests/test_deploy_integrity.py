@@ -61,7 +61,6 @@ def test_packages_contains_required_tools():
     packages = (ROOT / "deploy/botinstaller/packages.txt").read_text()
 
     required = [
-        "rclone",
         "iptables-persistent",
         "netfilter-persistent",
         "fail2ban",
@@ -69,6 +68,14 @@ def test_packages_contains_required_tools():
 
     for item in required:
         assert item in packages, f"Missing package: {item}"
+
+
+def test_installer_installs_latest_rclone():
+    installer = (ROOT / "deploy/botinstaller/install.sh").read_text()
+
+    assert "install_rclone()" in installer
+    assert "https://rclone.org/install.sh" in installer
+    assert "install_rclone" in installer
 
 
 def test_deploy_archive_contains_env_template(deploy_archive):
