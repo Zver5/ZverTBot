@@ -21,13 +21,42 @@ class TestBuildClientCard:
         assert "VLESS" in result
         assert "Reality" in result
 
-    def test_vless_contains_sni(self):
-        """Тест: VLESS карточка содержит оба SNI (MTS и Beeline)"""
-        result = build_client_card("TestUser", "vless")
+    def test_vless_contains_sni(self, monkeypatch):
+        """Тест: VLESS карточка содержит реальные порты и SNI."""
+        import ui.messages as messages
+
+        monkeypatch.setattr(
+            messages,
+            "xray_get_sni_by_port",
+            lambda: {
+                443: "itunes.apple.com",
+                2096: "speed.cloudflare.com",
+            },
+        )
+
+        result = messages.build_client_card("TestUser", "vless")
+
         assert "itunes.apple.com" in result
         assert "speed.cloudflare.com" in result
-        assert "443" in result
-        assert "2096" in result
+        assert "31.77.218.240:443" in result
+        assert "31.77.218.240:2096" in result
+
+    def test_vless_uses_actual_xray_port(self, monkeypatch):
+        """Тест: VLESS карточка показывает порт из Xray-конфига."""
+        import ui.messages as messages
+
+        monkeypatch.setattr(
+            messages,
+            "xray_get_sni_by_port",
+            lambda: {2053: "itunes.apple.com"},
+        )
+
+        result = messages.build_client_card("TestUser", "vless")
+
+        assert "31.77.218.240:2053" in result
+        assert "itunes.apple.com" in result
+        assert "443" not in result
+        assert "2096" not in result
 
     def test_vless_contains_username(self):
         """Тест: VLESS карточка содержит имя клиента"""
