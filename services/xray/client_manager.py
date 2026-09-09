@@ -8,6 +8,7 @@ import subprocess
 from config.paths import XRAY_CONF
 from services.xray.config_manager import (
     add_client_to_all_inbounds,
+    get_xray_readiness,
     load_xray_config,
     save_xray_config,
 )
@@ -83,6 +84,16 @@ def xray_add_user(username: str) -> tuple[bool, str]:
             return False, "❌ Только латиница, цифры, _ -"
 
         config = load_xray_config()
+
+        ready, problems = get_xray_readiness(config)
+        if not ready:
+            details = "\n".join(f"• {problem}" for problem in problems)
+            return (
+                False,
+                "❌ Конфигурация Xray не готова к созданию клиента.\n\n"
+                f"Причина:\n{details}\n\n"
+                "⚙️ Настройте config.json и повторите создание клиента.",
+            )
 
         # Проверка на существование во всех VLESS inbound'ах
         if not is_username_unique_vless(username):
