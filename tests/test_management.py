@@ -818,8 +818,8 @@ def test_run_manual_backup_success(monkeypatch):
 
     monkeypatch.setattr(management.threading, "Thread", FakeThread)
     monkeypatch.setattr(
-        management.subprocess,
-        "run",
+        management,
+        "_run_backup_with_progress",
         lambda *args, **kwargs: Result(),
     )
 
@@ -867,6 +867,57 @@ def test_run_manual_backup_success(monkeypatch):
     assert "backup.tar.gz" in calls[-1][1]
 
 
+def test_run_backup_with_progress_shows_rclone_stats(monkeypatch):
+    from handlers.admin import management
+
+    calls = []
+
+    stats_lines = [
+        '{"stats":{"bytes":52428800,"totalBytes":104857600,"speed":1048576,"eta":50,"transferring":[{"bytes":52428800,"size":104857600,"percentage":50}]}}\n',
+    ]
+
+    class FakeProcess:
+        returncode = 0
+
+        def __init__(self):
+            self.stderr = stats_lines
+
+        def poll(self):
+            return 0
+
+        def wait(self):
+            return 0
+
+        def kill(self):
+            raise AssertionError("process should not be killed")
+
+    monkeypatch.setattr(
+        management.subprocess,
+        "Popen",
+        lambda *args, **kwargs: FakeProcess(),
+    )
+    monkeypatch.setattr(
+        management,
+        "safe_edit_message",
+        lambda *args, **kwargs: calls.append(args),
+    )
+
+    result = management._run_backup_with_progress(
+        management.bot,
+        123,
+        456,
+    )
+
+    assert result.returncode == 0
+
+    progress = calls[-1][1]
+    assert "*50%*" in progress
+    assert "`50.0 / 100.0 MB`" in progress
+    assert "`1.0 MB/s`" in progress
+    assert "Осталось: `50 сек`" in progress
+    assert "██████████░░░░░░░░░░" in progress
+
+
 def test_run_manual_backup_rclone_missing(monkeypatch):
     from handlers.admin import management
 
@@ -886,8 +937,8 @@ def test_run_manual_backup_rclone_missing(monkeypatch):
 
     monkeypatch.setattr(management.threading, "Thread", FakeThread)
     monkeypatch.setattr(
-        management.subprocess,
-        "run",
+        management,
+        "_run_backup_with_progress",
         lambda *args, **kwargs: Result(),
     )
 
@@ -948,8 +999,8 @@ def test_run_manual_backup_cloud_token_missing(monkeypatch):
 
     monkeypatch.setattr(management.threading, "Thread", FakeThread)
     monkeypatch.setattr(
-        management.subprocess,
-        "run",
+        management,
+        "_run_backup_with_progress",
         lambda *args, **kwargs: Result(),
     )
 
@@ -1015,8 +1066,8 @@ def test_run_manual_backup_local_only_status_overrides_returncode(monkeypatch):
 
     monkeypatch.setattr(management.threading, "Thread", FakeThread)
     monkeypatch.setattr(
-        management.subprocess,
-        "run",
+        management,
+        "_run_backup_with_progress",
         lambda *args, **kwargs: Result(),
     )
     monkeypatch.setattr(
@@ -1076,7 +1127,7 @@ def test_run_manual_backup_timeout(monkeypatch):
         raise subprocess.TimeoutExpired("bash", 300)
 
     monkeypatch.setattr(management.threading, "Thread", FakeThread)
-    monkeypatch.setattr(management.subprocess, "run", fail)
+    monkeypatch.setattr(management, "_run_backup_with_progress", fail)
     monkeypatch.setattr(
         management,
         "safe_edit_message",
@@ -1113,8 +1164,8 @@ def test_run_manual_backup_warning_unknown_error(monkeypatch):
 
     monkeypatch.setattr(management.threading, "Thread", FakeThread)
     monkeypatch.setattr(
-        management.subprocess,
-        "run",
+        management,
+        "_run_backup_with_progress",
         lambda *args, **kwargs: Result(),
     )
 
@@ -1165,8 +1216,8 @@ def test_run_manual_backup_status_read_error_after_failed_backup(monkeypatch):
 
     monkeypatch.setattr(management.threading, "Thread", FakeThread)
     monkeypatch.setattr(
-        management.subprocess,
-        "run",
+        management,
+        "_run_backup_with_progress",
         lambda *args, **kwargs: Result(),
     )
 
@@ -1205,7 +1256,7 @@ def test_run_manual_backup_outer_error(monkeypatch):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(management.threading, "Thread", FakeThread)
-    monkeypatch.setattr(management.subprocess, "run", fail)
+    monkeypatch.setattr(management, "_run_backup_with_progress", fail)
     monkeypatch.setattr(
         management,
         "safe_edit_message",
@@ -1239,8 +1290,8 @@ def test_run_manual_backup_success_status_read_error(monkeypatch):
 
     monkeypatch.setattr(management.threading, "Thread", FakeThread)
     monkeypatch.setattr(
-        management.subprocess,
-        "run",
+        management,
+        "_run_backup_with_progress",
         lambda *args, **kwargs: Result(),
     )
 

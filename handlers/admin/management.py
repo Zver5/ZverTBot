@@ -4,6 +4,7 @@
 """
 
 import json
+import queue
 import subprocess
 import sys
 import threading
@@ -505,16 +506,143 @@ def handle_management_part3_callback(bot, cid, call, data):
     return False
 
 
+def _run_backup_with_progress(bot, cid, message_id):
+    """Запуск бэкапа с чтением реальной статистики rclone."""
+    cmd = ["bash", BACKUP_SCRIPT]
+
+    safe_edit_message(
+        bot,
+        "📦 Создание архива, ожидайте...",
+        cid,
+        message_id,
+        parse_mode="Markdown",
+    )
+
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+
+    lines = queue.Queue()
+    stderr_lines = []
+
+    def _read_stderr():
+        try:
+            for line in process.stderr:
+                lines.put(line)
+        finally:
+            lines.put(None)
+
+    reader = threading.Thread(target=_read_stderr, daemon=True)
+    reader.start()
+
+    started = time.monotonic()
+    last_edit = 0.0
+    last_percentage = None
+    reader_finished = False
+
+    while True:
+        if time.monotonic() - started > BACKUP_TIMEOUT:
+            process.kill()
+            reader.join(timeout=1)
+            raise subprocess.TimeoutExpired(
+                cmd,
+                BACKUP_TIMEOUT,
+                stderr="".join(stderr_lines),
+            )
+
+        try:
+            line = lines.get(timeout=0.2)
+        except queue.Empty:
+            line = ""
+
+        if line is None:
+            reader_finished = True
+        elif line:
+            stderr_lines.append(line)
+
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            stats = payload.get("stats")
+            if not isinstance(stats, dict):
+                continue
+
+            total = int(stats.get("totalBytes") or 0)
+            transferred = int(stats.get("bytes") or 0)
+
+            transferring = stats.get("transferring") or []
+            current = transferring[0] if transferring else {}
+
+            percentage = current.get("percentage")
+            if percentage is None and total:
+                percentage = round(transferred * 100 / total)
+
+            if percentage is None:
+                continue
+
+            percentage = max(0, min(100, int(percentage)))
+            now = time.monotonic()
+
+            if percentage != last_percentage or now - last_edit >= 2:
+                filled = percentage // 5
+                bar = "█" * filled + "░" * (20 - filled)
+
+                done_mb = transferred / 1024 / 1024
+                total_mb = total / 1024 / 1024
+                speed = float(stats.get("speed") or 0)
+                speed_mb = speed / 1024 / 1024
+                eta = stats.get("eta")
+
+                eta_text = f"{int(eta)} сек" if eta is not None else "—"
+
+                text = (
+                    "🔄 *Загружается бэкап...*\n\n"
+                    "☁️ Загрузка на backup remote\n"
+                    f"`[{bar}]` *{percentage}%*\n\n"
+                    f"📦 `{done_mb:.1f} / {total_mb:.1f} MB`\n"
+                    f"⚡ `{speed_mb:.1f} MB/s`\n"
+                    f"⏳ Осталось: `{eta_text}`"
+                )
+
+                safe_edit_message(
+                    bot,
+                    text,
+                    cid,
+                    message_id,
+                    parse_mode="Markdown",
+                )
+
+                last_percentage = percentage
+                last_edit = now
+
+        if process.poll() is not None and reader_finished:
+            break
+
+    process.wait()
+
+    return subprocess.CompletedProcess(
+        cmd,
+        process.returncode,
+        stdout="",
+        stderr="".join(stderr_lines),
+    )
+
+
 def run_manual_backup(bot, cid, message_id):
     """Запуск бэкапа в фоне с уведомлением о результате"""
 
     def _do_backup():
         try:
-            result = subprocess.run(
-                ["bash", BACKUP_SCRIPT],
-                capture_output=True,
-                text=True,
-                timeout=BACKUP_TIMEOUT,
+            result = _run_backup_with_progress(
+                bot,
+                cid,
+                message_id,
             )
 
             try:
