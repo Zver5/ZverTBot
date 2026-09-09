@@ -208,3 +208,50 @@ def test_rename_peer_in_config_exception(monkeypatch, tmp_path):
     with patch("builtins.open", side_effect=PermissionError("Mocked error")):
         result = config_manager.rename_peer_in_config("old", "new")
         assert result is False
+
+
+def test_get_awg_readiness_ready():
+    content = """[Interface]
+PrivateKey = REAL_PRIVATE_KEY
+Address = 10.66.66.1/24
+ListenPort = 58352
+"""
+
+    ready, problems = config_manager.get_awg_readiness(content)
+
+    assert ready is True
+    assert problems == []
+
+
+def test_get_awg_readiness_empty_config():
+    ready, problems = config_manager.get_awg_readiness("")
+
+    assert ready is False
+    assert problems == ["Конфигурация AWG пустая"]
+
+
+def test_get_awg_readiness_missing_interface():
+    content = """[Peer]
+PublicKey = TEST
+AllowedIPs = 10.66.66.10/32
+"""
+
+    ready, problems = config_manager.get_awg_readiness(content)
+
+    assert ready is False
+    assert problems == ["[Interface] не найден"]
+
+
+def test_get_awg_readiness_detects_missing_and_template_fields():
+    content = """[Interface]
+PrivateKey = REPLACE_WITH_AWG_SERVER_PRIVATE_KEY
+"""
+
+    ready, problems = config_manager.get_awg_readiness(content)
+
+    assert ready is False
+    assert problems == [
+        "PrivateKey содержит шаблонное значение",
+        "не указан Address",
+        "не указан ListenPort",
+    ]
