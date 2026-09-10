@@ -23,7 +23,7 @@ def test_required_systemd_core_templates():
     required = [
         "zvertbot.service",
         "stats-http.service",
-        "healthcheck.service",
+        "zvertbot-vps-monitor.service",
         "geoip-collect.service",
         "geoip-collect.timer",
         "vps-stats.service",
@@ -39,8 +39,7 @@ def test_required_optional_templates():
     optional = BOTINSTALLER / "systemd" / "optional"
 
     required = [
-        "kuma-webhook.service",
-        "xray-traffic.service",
+                "xray-traffic.service",
         "xray-traffic.timer",
         "zvertbot-backup.service",
         "zvertbot-backup.timer",

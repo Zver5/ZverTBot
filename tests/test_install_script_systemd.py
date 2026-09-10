@@ -23,7 +23,7 @@ def test_core_services_are_started():
         "vps-stats.service",
         "vps-stats.timer",
         "geoip-collect.timer",
-        "healthcheck.service",
+        "zvertbot-vps-monitor.service",
     ]
 
     missing = [x for x in required if x not in INSTALL]
@@ -35,7 +35,6 @@ def test_optional_services_are_started():
     required = [
         "xray-traffic.timer",
         "zvertbot-backup.timer",
-        "kuma-webhook.service",
     ]
 
     missing = [x for x in required if x not in INSTALL]
