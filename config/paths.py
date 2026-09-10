@@ -129,7 +129,6 @@ SSH_AUTHORIZED_KEYS = SSH_HOME / ".ssh" / "authorized_keys"
 
 TMP_DIR = Path("/tmp")
 
-KUMA_STATE_FILE = TMP_DIR / "zvert_health_state.json"
 
 # -----------------------
 # LOGS

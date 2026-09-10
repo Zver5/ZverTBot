@@ -39,7 +39,6 @@ HASS_FLAG = os.getenv("HASS_FLAG", "🌍")
 
 
 # Kuma webhook / healthcheck
-KUMA_HEALTHCHECK_URL = os.getenv("KUMA_HEALTHCHECK_URL", "http://127.0.0.1:8081/status")
 
 
 # LLM API for log diagnostics
