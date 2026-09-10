@@ -65,6 +65,7 @@ def isolate_bot_history(tmp_path, monkeypatch):
 def isolate_management_bot(monkeypatch):
     """Изолирует глобальный bot management от реального Telegram."""
     from unittest.mock import Mock
+
     from handlers.admin import management
 
     monkeypatch.setattr(management, "bot", Mock())
