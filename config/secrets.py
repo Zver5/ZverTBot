@@ -38,7 +38,6 @@ HASS_FLAG = os.getenv("HASS_FLAG", "🌍")
 # AmneziaWG
 
 
-# Kuma webhook / healthcheck
 
 
 # LLM API for log diagnostics
