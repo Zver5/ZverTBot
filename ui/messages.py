@@ -28,16 +28,17 @@ def build_client_card(username: str, proto: str) -> str:
 
         try:
             sni_by_port = xray_get_sni_by_port()
-            sni_443 = sni_by_port.get(443, "")
-            sni_2096 = sni_by_port.get(2096, "")
 
-            return (
-                header
-                + f"🌐 *Сервер 1:* `{SERVER_IP}:443`\n"
-                + f"🔹 SNI: `{sni_443}`\n"
-                + f"🌐 *Сервер 2:* `{SERVER_IP}:2096`\n"
-                + f"🔹 SNI: `{sni_2096}`\n"
+            if not sni_by_port:
+                return header
+
+            servers = "".join(
+                f"🌐 *Сервер {index}:* `{SERVER_IP}:{port}`\n"
+                f"🔹 SNI: `{sni}`\n"
+                for index, (port, sni) in enumerate(sorted(sni_by_port.items()), 1)
             )
+
+            return header + servers
         except Exception:
             return header
     else:

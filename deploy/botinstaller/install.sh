@@ -16,7 +16,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${INSTALL_DIR}/.env"
 SYSTEMD_DIR="/etc/systemd/system"
 
-
 # ---------- Colors ----------
 RED="\033[0;31m"
 GREEN="\033[0;32m"
@@ -42,6 +41,24 @@ fail() {
     echo -e "${RED}[FAIL]${NC} $1"
     exit 1
 }
+
+
+INSTALL_XRAY=false
+INSTALL_AWG=false
+
+for arg in "$@"; do
+    case "$arg" in
+        -xray)
+            INSTALL_XRAY=true
+            ;;
+        -awg)
+            INSTALL_AWG=true
+            ;;
+        *)
+            fail "Unknown option: $arg"
+            ;;
+    esac
+done
 
 
 banner() {
@@ -199,6 +216,88 @@ extract_archive() {
     ok "Project version: $VERSION"
     ok "Archive installed"
 
+}
+
+
+install_xray() {
+
+    if command -v xray >/dev/null 2>&1; then
+        ok "Xray already installed"
+        return
+    fi
+
+    info "Installing Xray"
+
+    bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+
+    if ! command -v xray >/dev/null 2>&1; then
+        fail "Xray installation failed"
+    fi
+
+    ok "Xray installed"
+
+    XRAY_DEFAULT_CONF="/usr/local/etc/xray/config.json"
+    XRAY_EXAMPLE="${INSTALL_DIR}/deploy/botinstaller/examples/xray.config.example.json"
+
+    if [ ! -f "$XRAY_DEFAULT_CONF" ] && [ -f "$XRAY_EXAMPLE" ]; then
+        mkdir -p "$(dirname "$XRAY_DEFAULT_CONF")"
+        install -m 644 "$XRAY_EXAMPLE" "$XRAY_DEFAULT_CONF"
+        ok "Xray example config installed: $XRAY_DEFAULT_CONF"
+    fi
+}
+
+
+install_rclone() {
+
+    info "Installing latest rclone"
+
+    if ! curl -fsSL https://rclone.org/install.sh | bash >/dev/null; then
+        fail "rclone installation failed"
+    fi
+
+    if ! command -v rclone >/dev/null 2>&1; then
+        fail "rclone installation failed: binary not found"
+    fi
+
+    RCLONE_VERSION=$(rclone version 2>/dev/null | awk 'NR==1 {print $2}')
+
+    if [ -n "$RCLONE_VERSION" ]; then
+        ok "rclone installed: $RCLONE_VERSION"
+    else
+        ok "rclone installed"
+    fi
+}
+
+
+install_awg() {
+
+    if command -v awg >/dev/null 2>&1; then
+        ok "AmneziaWG already installed"
+        return
+    fi
+
+    info "Installing AmneziaWG from PPA"
+
+    DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common >/dev/null
+
+    add-apt-repository ppa:amnezia/ppa -y
+    apt-get update -y >/dev/null
+    DEBIAN_FRONTEND=noninteractive apt-get install -y amneziawg-dkms amneziawg-tools >/dev/null
+
+    if ! command -v awg >/dev/null 2>&1; then
+        fail "AmneziaWG installation failed"
+    fi
+
+    ok "AmneziaWG installed"
+
+    AWG_DEFAULT_CONF="/etc/amnezia/amneziawg/awg0.conf"
+    AWG_EXAMPLE="${INSTALL_DIR}/deploy/botinstaller/examples/awg0.conf.example"
+
+    if [ ! -f "$AWG_DEFAULT_CONF" ] && [ -f "$AWG_EXAMPLE" ]; then
+        mkdir -p "$(dirname "$AWG_DEFAULT_CONF")"
+        install -m 600 "$AWG_EXAMPLE" "$AWG_DEFAULT_CONF"
+        ok "AWG example config installed: $AWG_DEFAULT_CONF"
+    fi
 }
 
 
@@ -949,6 +1048,7 @@ fi
 
 
 install_packages
+install_rclone
 
 
 # System tuning
@@ -958,6 +1058,15 @@ if [ -f "$TUNING_SCRIPT" ]; then
     bash "$TUNING_SCRIPT"
 else
     warn "system_tuning.sh not found"
+fi
+
+
+if [ "$INSTALL_XRAY" = true ]; then
+    install_xray
+fi
+
+if [ "$INSTALL_AWG" = true ]; then
+    install_awg
 fi
 
 

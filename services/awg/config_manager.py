@@ -14,6 +14,51 @@ from utils.logger import logger
 from utils.perf import profile
 
 
+def get_awg_readiness(content: str) -> tuple[bool, list[str]]:
+    """Проверяет, готов ли AWG-конфиг серверного интерфейса."""
+    problems: list[str] = []
+
+    if not isinstance(content, str) or not content.strip():
+        return False, ["Конфигурация AWG пустая"]
+
+    interface_lines: list[str] = []
+    in_interface = False
+
+    for line in content.splitlines():
+        stripped = line.strip()
+
+        if stripped.startswith("["):
+            in_interface = stripped.lower() == "[interface]"
+            continue
+
+        if in_interface and stripped and not stripped.startswith("#"):
+            interface_lines.append(stripped)
+
+    if not interface_lines:
+        return False, ["[Interface] не найден"]
+
+    fields: dict[str, str] = {}
+    for line in interface_lines:
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        fields[key.strip().lower()] = value.strip()
+
+    private_key = fields.get("privatekey")
+    if not private_key:
+        problems.append("не указан PrivateKey")
+    elif private_key.startswith("REPLACE_WITH_"):
+        problems.append("PrivateKey содержит шаблонное значение")
+
+    if not fields.get("address"):
+        problems.append("не указан Address")
+
+    if not fields.get("listenport"):
+        problems.append("не указан ListenPort")
+
+    return not problems, problems
+
+
 def load_awg_config() -> str:
     """
     Загружает содержимое awg0.conf.

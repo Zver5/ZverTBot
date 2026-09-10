@@ -2,10 +2,60 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def allow_vless_username(monkeypatch):
+def allow_vless_username(monkeypatch, tmp_path):
     from services.awg import client_manager as cm
 
+    conf = tmp_path / "awg0.conf"
+    conf.write_text(
+        "[Interface]\n"
+        "PrivateKey = REAL_PRIVATE_KEY\n"
+        "Address = 10.66.66.1/24\n"
+        "ListenPort = 58352\n",
+        encoding="utf-8",
+    )
+
     monkeypatch.setattr(cm, "is_username_unique_vless", lambda username: True)
+    monkeypatch.setattr(cm, "AWG_CONF", conf)
+    monkeypatch.setattr(cm.shutil, "which", lambda name: "/usr/bin/awg")
+    monkeypatch.setattr(cm, "get_awg_readiness", lambda config: (True, []))
+
+
+def test_awg_add_user_not_ready(monkeypatch):
+    from services.awg import client_manager as cm
+
+    registry = {}
+    calls = []
+
+    monkeypatch.setattr(cm, "is_username_unique_awg", lambda username: True)
+    monkeypatch.setattr(
+        cm,
+        "get_awg_readiness",
+        lambda config: (
+            False,
+            [
+                "PrivateKey содержит шаблонное значение",
+                "не указан ListenPort",
+            ],
+        ),
+    )
+    monkeypatch.setattr(cm, "load_awg_registry", lambda: registry)
+    monkeypatch.setattr(cm, "save_awg_registry", lambda data: registry.update(data))
+
+    def fake_run(*args, **kwargs):
+        calls.append(args[0])
+        raise AssertionError("AWG command must not run")
+
+    monkeypatch.setattr(cm.subprocess, "run", fake_run)
+
+    ok, result = cm.awg_add_user("testuser")
+
+    assert ok is False
+    assert "Конфигурация AWG не готова" in result
+    assert "PrivateKey содержит шаблонное значение" in result
+    assert "не указан ListenPort" in result
+    assert "Настройте awg0.conf" in result
+    assert registry == {}
+    assert calls == []
 
 
 def test_awg_add_user_success(monkeypatch):

@@ -497,16 +497,28 @@ def collect_stats():
 
     xray_port = None
     xray_clients_raw = []
+    seen_xray_clients = set()
     try:
         with open(XRAY_CONF) as f:
             cfg = json.load(f)
         for ib in cfg.get("inbounds", []):
-            if ib.get("protocol") in ["vmess", "vless", "shadowsocks", "trojan"]:
+            protocol = ib.get("protocol")
+            if protocol in ["vmess", "vless", "shadowsocks", "trojan"]:
                 if not xray_port:
                     xray_port = ib.get("port")
                 for cl in ib.get("settings", {}).get("clients", []):
+                    name = cl.get("email", "Unknown")
+                    client_id = cl.get("id")
+                    identity = (
+                        (protocol, client_id)
+                        if client_id
+                        else (protocol, name)
+                    )
+                    if identity in seen_xray_clients:
+                        continue
+                    seen_xray_clients.add(identity)
                     xray_clients_raw.append(
-                        {"name": cl.get("email", "Unknown"), "id": cl.get("id")}
+                        {"name": name, "id": client_id}
                     )
     except Exception as e:
         logger.warning("vps_stats.xray_config.load_failed | error=%s", e)

@@ -39,6 +39,7 @@ BACKUP_DIR="${CONFIG_BACKUPS_DIR:-/root/config-backups}"
 DATE=$(TZ='Europe/Moscow' date +%Y-%m-%d_%H-%M-%S)
 
 BACKUP_NAME="vps-backup-${DATE}.tar.gz"
+BACKUP_START_TIME=$(date +%s)
 
 # Backup configuration is loaded from the project .env.
 BACKUP_REMOTE="${BACKUP_REMOTE:-}"
@@ -479,7 +480,10 @@ log_info "backup.remote.upload_started | remote=${BACKUP_REMOTE} | file=${BACKUP
 if ! rclone copy \
 "${BACKUP_DIR}/${BACKUP_NAME}" \
 "${BACKUP_REMOTE}:${BACKUP_ROOT_DIR}/configs/" \
---progress; then
+--stats=1s \
+--use-json-log \
+--stats-log-level=INFO \
+-vv; then
     log_error "backup.remote.upload_failed | remote=${BACKUP_REMOTE} | file=${BACKUP_NAME}"
 
     if ! write_failed_status 1 "Failed to upload backup to remote"; then
@@ -565,7 +569,13 @@ done < <(
 
 if [ "${#BACKUP_FILES[@]}" -gt 5 ]; then
     for ((i=5; i<${#BACKUP_FILES[@]}; i++)); do
-        rm -f -- "${BACKUP_FILES[$i]#* }"
+        FILE="${BACKUP_FILES[$i]#* }"
+
+        if [ "${FILE}" = "${BACKUP_DIR}/${BACKUP_NAME}" ]; then
+            continue
+        fi
+
+        rm -f -- "${FILE}"
     done
 fi
 
@@ -593,15 +603,19 @@ if ! rclone lsf \
 fi
 
 REMOTE_BACKUPS_TO_DELETE=()
+
 while IFS= read -r FILE; do
+    [ -n "${FILE}" ] || continue
+    [ "${FILE}" = "${BACKUP_NAME}" ] && continue
+
     REMOTE_BACKUPS_TO_DELETE+=("${FILE}")
 done < <(
-    awk '/vps-backup-.*\.tar.gz/ {print}' "${REMOTE_BACKUPS_FILE}" | sort -r
+    awk '/^vps-backup-.*\.tar.gz$/ {print}' "${REMOTE_BACKUPS_FILE}" | sort -r
 )
 
-if [ "${#REMOTE_BACKUPS_TO_DELETE[@]}" -gt 10 ]; then
+if [ "${#REMOTE_BACKUPS_TO_DELETE[@]}" -gt 9 ]; then
     REMOTE_BACKUPS_TO_DELETE=(
-        "${REMOTE_BACKUPS_TO_DELETE[@]:10}"
+        "${REMOTE_BACKUPS_TO_DELETE[@]:9}"
     )
 fi
 
@@ -623,6 +637,7 @@ SIZE_BYTES=$(stat -c%s "${BACKUP_DIR}/${BACKUP_NAME}" 2>/dev/null || echo 0)
 
 SIZE_MB=$((SIZE_BYTES / 1048576))
 
+BACKUP_DURATION_SEC=$(( $(date +%s) - BACKUP_START_TIME ))
 
 NEXT_RUN=$(TZ='Europe/Moscow' date -d "+8 hours" -Iseconds)
 
@@ -636,6 +651,7 @@ cat > "${STATUS_FILE}" << EOF
   "last_backup": "$(TZ='Europe/Moscow' date -Iseconds)",
   "status": "success",
   "size_mb": ${SIZE_MB},
+  "duration_sec": ${BACKUP_DURATION_SEC},
   "next_run": "${NEXT_RUN}",
   "file_name": "${BACKUP_NAME}"
 }

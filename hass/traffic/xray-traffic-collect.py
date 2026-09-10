@@ -33,6 +33,37 @@ AWG_USERS_JSON = paths.AWG_USERS_JSON
 XRAY_CONF = paths.XRAY_CONF
 
 
+def get_xray_clients_from_config(cfg):
+    """Возвращает уникальных VLESS-клиентов, сгруппированных по UUID."""
+    clients = {}
+
+    for inbound in cfg.get("inbounds", []):
+        if inbound.get("protocol") != "vless":
+            continue
+
+        port = inbound.get("port")
+        for client in inbound.get("settings", {}).get("clients", []):
+            name = client.get("email")
+            client_id = client.get("id")
+
+            if not name or not client_id:
+                continue
+
+            entry = clients.setdefault(
+                client_id,
+                {
+                    "id": client_id,
+                    "name": name,
+                    "inbounds": [],
+                },
+            )
+
+            if port not in entry["inbounds"]:
+                entry["inbounds"].append(port)
+
+    return list(clients.values())
+
+
 def sync_and_archive(data):
     """Синхронизирует usage.json с реальными конфигами и архивирует удаленных"""
     try:
@@ -225,16 +256,13 @@ def collect():
     new = {"updated": ts, "clients": old.get("clients", {}).copy()}
     old_cl = old.get("clients", {})
 
-    # Динамическое получение списка Xray клиентов из config.json
+    # Динамическое получение уникальных Xray-клиентов из config.json.
     xray_users = []
     if XRAY_CONF.exists():
         with open(XRAY_CONF) as f:
             cfg = json.load(f)
-            for inb in cfg.get("inbounds", []):
-                if inb.get("protocol") == "vless":
-                    for c in inb.get("settings", {}).get("clients", []):
-                        if c.get("email"):
-                            xray_users.append(c["email"])
+        xray_clients = get_xray_clients_from_config(cfg)
+        xray_users = [client["name"] for client in xray_clients]
 
     for u in xray_users:
         r_up = query_xray_stat(f"user>>>{u}>>>traffic>>>uplink")

@@ -593,6 +593,70 @@ def test_collect_logs_fail2ban_status_error(monkeypatch, caplog):
     assert "fail2ban failed" in caplog.text
 
 
+def test_collect_deduplicates_xray_client_by_uuid(monkeypatch):
+    import builtins
+    from io import StringIO
+
+    module = load_vps_stats()
+    real_open = builtins.open
+    xray_path = module.XRAY_CONF
+
+    cfg = {
+        "inbounds": [
+            {
+                "port": 443,
+                "protocol": "vless",
+                "settings": {
+                    "clients": [
+                        {
+                            "email": "ZverX",
+                            "id": "7910ef31-fe3b-4b35-8a8b-b869e61efce8",
+                        }
+                    ]
+                },
+            },
+            {
+                "port": 2096,
+                "protocol": "vless",
+                "settings": {
+                    "clients": [
+                        {
+                            "email": "ZverX",
+                            "id": "7910ef31-fe3b-4b35-8a8b-b869e61efce8",
+                        }
+                    ]
+                },
+            },
+        ]
+    }
+
+    def fake_open(path, *args, **kwargs):
+        if Path(path) == xray_path:
+            import json
+
+            return StringIO(json.dumps(cfg))
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", fake_open)
+    sys.modules.pop(MODULE_NAME, None)
+
+    module = load_vps_stats()
+    module.collect_stats()
+
+    matches = [
+        client
+        for client in module.xray_clients_raw
+        if client["id"] == "7910ef31-fe3b-4b35-8a8b-b869e61efce8"
+    ]
+
+    assert matches == [
+        {
+            "name": "ZverX",
+            "id": "7910ef31-fe3b-4b35-8a8b-b869e61efce8",
+        }
+    ]
+
+
 def test_xray_client_uses_last_ip_when_current_ip_missing():
 
     client_usage = {

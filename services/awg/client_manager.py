@@ -8,7 +8,12 @@ import subprocess
 
 from config.paths import AWG_CONF
 from data.storage import load_awg_registry, save_awg_registry
-from services.awg.config_manager import add_peer_to_config, remove_peer_from_config
+from services.awg.config_manager import (
+    add_peer_to_config,
+    get_awg_readiness,
+    load_awg_config,
+    remove_peer_from_config,
+)
 from services.awg.ip_manager import find_free_awg_ip
 from utils.client_operation_lock import client_operation_lock
 from utils.logger import logger
@@ -50,6 +55,17 @@ def awg_add_user(username: str) -> tuple[bool, str]:
 
         if not AWG_CONF.is_file():
             return False, f"❌ Путь AWG не найден: {AWG_CONF}"
+
+        config = load_awg_config()
+        ready, problems = get_awg_readiness(config)
+        if not ready:
+            details = "\n".join(f"• {problem}" for problem in problems)
+            return (
+                False,
+                "❌ Конфигурация AWG не готова к созданию клиента.\n\n"
+                f"Причина:\n{details}\n\n"
+                "⚙️ Настройте awg0.conf и повторите создание клиента.",
+            )
 
         # Генерация ключей
         priv = subprocess.run(

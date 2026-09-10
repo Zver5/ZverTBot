@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 import config
+import data.storage as storage
 from handlers.navigation_registry import register_navigation_screens
 
 # В тестах используем ту же единую startup-регистрацию screens, что и main.py.
@@ -39,16 +40,35 @@ def deploy_archive(tmp_path_factory):
     return archives[0]
 
 
+@pytest.fixture(autouse=True)
 def isolate_bot_history(tmp_path, monkeypatch):
     """Изолирует историю тестов от рабочей bot_history.json."""
     test_history = tmp_path / "bot_history.json"
     test_history.write_text("[]", encoding="utf-8")
+    test_history_path = str(test_history)
 
+    monkeypatch.setattr(config, "BOT_HISTORY", test_history_path)
+    monkeypatch.setattr(storage, "BOT_HISTORY", test_history_path)
     monkeypatch.setattr(
-        config,
-        "BOT_HISTORY",
-        str(test_history),
+        storage.load_history,
+        "__defaults__",
+        (test_history_path,),
     )
+    monkeypatch.setattr(
+        storage.save_history,
+        "__defaults__",
+        (test_history_path,),
+    )
+
+
+@pytest.fixture(autouse=True)
+def isolate_management_bot(monkeypatch):
+    """Изолирует глобальный bot management от реального Telegram."""
+    from unittest.mock import Mock
+
+    from handlers.admin import management
+
+    monkeypatch.setattr(management, "bot", Mock())
 
 
 @pytest.fixture(autouse=True)
