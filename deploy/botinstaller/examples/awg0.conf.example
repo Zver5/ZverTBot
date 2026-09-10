@@ -1,20 +1,20 @@
-[Interface] 
-PrivateKey = REPLACE_WITH_AWG_SERVER_PRIVATE_KEY 
-Address = 10.66.66.1/24 
-ListenPort = 58352 
-Jc = 4 
-Jmin = 40 
-Jmax = 70 
-S1 = 117 
-S2 = 74 
-S3 = 63 
-S4 = 82 
-H1 = 1 
-H2 = 2 
-H3 = 3 
-H4 = 4 
- 
-# Name: example 
-[Peer] 
-PublicKey = REPLACE_WITH_CLIENT_PUBLIC_KEY 
-AllowedIPs = 10.66.66.12/32 
+[Interface]
+PrivateKey = REPLACE_WITH_AWG_SERVER_PRIVATE_KEY
+Address = 10.66.66.1/24
+ListenPort = 58352
+Jc = 4
+Jmin = 40
+Jmax = 70
+S1 = 117
+S2 = 74
+S3 = 63
+S4 = 82
+H1 = 1
+H2 = 2
+H3 = 3
+H4 = 4
+
+# Name: example
+[Peer]
+PublicKey = REPLACE_WITH_CLIENT_PUBLIC_KEY
+AllowedIPs = 10.66.66.12/32
