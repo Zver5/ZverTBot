@@ -40,9 +40,11 @@ class VPSStatus:
 
 
 def build_vps_status(raw: dict[str, Any]) -> VPSStatus:
-    """Adapt the current stats.json structure to the public model."""
+    """Adapt the prepared VPS payload to the public HA contract."""
 
     disk = raw.get("disk") or {}
+    backup_raw = raw.get("rclone") or {}
+    fail2ban_raw = raw.get("fail2ban") or {}
 
     services: dict[str, Any] = {}
     for name, data in (raw.get("services") or {}).items():
@@ -53,52 +55,6 @@ def build_vps_status(raw: dict[str, Any]) -> VPSStatus:
             "status": data.get("status"),
             "uptime": data.get("uptime"),
         }
-
-    backup_raw = raw.get("rclone") or {}
-
-    fail2ban_raw = raw.get("fail2ban") or {}
-
-    awg_clients: list[dict[str, Any]] = []
-    xray_clients: list[dict[str, Any]] = []
-
-    for client in raw.get("peers") or []:
-        if not isinstance(client, dict):
-            continue
-
-        awg_clients.append(
-            {
-                "name": client.get("name"),
-                "ip": client.get("ip"),
-                "online": client.get("online"),
-                "endpoint": client.get("endpoint"),
-                "last_ip": client.get("last_ip"),
-                "last_seen": client.get("last_seen"),
-                "rx": client.get("rx"),
-                "tx": client.get("tx"),
-                "total_bytes": client.get("total_bytes"),
-                "geoip": _public_geoip(client.get("geoip")),
-            }
-        )
-
-    for client in raw.get("xray_clients") or []:
-        if not isinstance(client, dict):
-            continue
-
-        xray_clients.append(
-            {
-                "name": client.get("name"),
-                "ip": client.get("ip"),
-                "online": client.get("online"),
-                "endpoint": client.get("endpoint"),
-                "last_ip": client.get("last_ip"),
-                "last_seen": client.get("last_seen"),
-                "hs": client.get("hs"),
-                "rx": client.get("rx"),
-                "tx": client.get("tx"),
-                "total_bytes": client.get("total_bytes"),
-                "geoip": _public_geoip(client.get("geoip")),
-            }
-        )
 
     return VPSStatus(
         server_ip=str(raw.get("server_ip") or ""),
@@ -125,10 +81,49 @@ def build_vps_status(raw: dict[str, Any]) -> VPSStatus:
             "total_banned": fail2ban_raw.get("total_banned"),
         },
         connections=_public_connections(raw.get("connections")),
-        awg_clients=awg_clients,
-        xray_clients=xray_clients,
+        awg_clients=_public_clients(raw.get("awg_clients")),
+        xray_clients=_public_clients(raw.get("xray_clients")),
         updated_at=raw.get("vps_stats_last_check"),
     )
+
+
+def _public_clients(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+
+    result: list[dict[str, Any]] = []
+
+    for client in value:
+        if not isinstance(client, dict):
+            continue
+
+        public = {
+            key: client[key]
+            for key in (
+                "name",
+                "ip",
+                "proto",
+                "online",
+                "endpoint",
+                "last_ip",
+                "last_seen",
+                "hs",
+                "rx",
+                "tx",
+                "downlink",
+                "uplink",
+                "total",
+                "total_bytes",
+            )
+            if key in client
+        }
+
+        if "geoip" in client:
+            public["geoip"] = _public_geoip(client["geoip"])
+
+        result.append(public)
+
+    return result
 
 
 def _public_geoip(value: Any) -> dict[str, Any] | None:
