@@ -82,7 +82,7 @@ deploy/
              Packages     ZverTBot       systemd
                 │             │             │
                 │             ▼             │
-                │           .venv            │
+                │           .venv           │
                 │                           │
                 └─────────────┬─────────────┘
                               ▼
@@ -360,7 +360,6 @@ HA_TUNNEL_IP
 HASS_FLAG
 XRAY_CONF
 AWG_CONF
-KUMA_HEALTHCHECK_URL
 ```
 
 Не все эти параметры обязательны для каждого VPS.
@@ -680,11 +679,11 @@ Core-компоненты являются основной частью экс�
 
 ```text
 zvertbot.service
+zvertbot-vps-monitor.service
 stats-http.service
 vps-stats.service
 vps-stats.timer
 geoip-collect.timer
-healthcheck.service
 ```
 
 ## Optional
@@ -696,7 +695,6 @@ xray-traffic.service
 xray-traffic.timer
 zvertbot-backup.service
 zvertbot-backup.timer
-kuma-webhook.service
 ```
 
 `xray-traffic.timer` запускает `xray-traffic.service`.
@@ -771,7 +769,7 @@ ${BACKUP_REMOTE}:${BACKUP_ROOT_DIR}/passport/
 
 ```text
 zvertbot.service
-healthcheck.service
+zvertbot-vps-monitor.service
 stats-http.service
 vps-stats.timer
 geoip-collect.timer
@@ -783,8 +781,8 @@ geoip-collect.timer
 
 ```bash
 systemctl status zvertbot.service
+systemctl status zvertbot-vps-monitor.service
 systemctl status stats-http.service
-systemctl status healthcheck.service
 systemctl status vps-stats.timer
 systemctl status geoip-collect.timer
 ```
@@ -962,7 +960,7 @@ ZverTBot-deploy-VERSION.tar.gz
 ```bash
 systemctl status zvertbot.service
 systemctl status stats-http.service
-systemctl status healthcheck.service
+systemctl status zvertbot-vps-monitor.service
 ```
 
 а также состояние таймеров:

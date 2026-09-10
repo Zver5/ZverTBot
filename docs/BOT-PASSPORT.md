@@ -119,7 +119,7 @@ ZverTBot — Telegram-бот для управления VPN-сервером с
 #### Уведомления
 
 - **Watchdog HA-туннеля** — контроль состояния соединения Home Assistant с VPS.
-- **Uptime Kuma** — мониторинг системных служб и передача событий в Telegram.
+- **VPS Monitor** — независимый мониторинг состояния VPS и передача событий в Telegram.
 
 #### Интеграция с Home Assistant
 

@@ -2,6 +2,89 @@
 
 Все заметные изменения ZverTBot.
 
+## [1.2.0] - 2026-09-12
+
+### Added
+
+#### VPS Monitoring
+
+- Добавлен независимый `zvertbot-vps-monitor.service` для мониторинга состояния VPS.
+- Добавлен отдельный monitoring runner, независимый от Telegram polling процесса ZverTBot.
+- Добавлено persistent-хранилище состояния мониторируемых компонентов.
+- Добавлены event-driven уведомления в Telegram только при изменении состояния.
+- Добавлены уведомления о восстановлении сервиса после состояния DOWN.
+- Добавлены проверки состояния ZverTBot, Stats HTTP, backup, Xray, AmneziaWG, SSH и Fail2Ban.
+- Добавлены отдельные причины отказа для systemd, HTTP, TCP, UDP, client-проверок и backup.
+
+### Changed
+
+#### VPS Monitoring
+
+- Мониторинг VPS перенесён из legacy Kuma Healthcheck в независимый `zvertbot-vps-monitor.service`.
+- Проверка backup переведена на результат последнего выполнения и актуальность сохранённого статуса вместо проверки активности oneshot-сервиса.
+- Проверка AmneziaWG учитывает состояние интерфейса и доступность UDP-порта.
+- Для `stats-http`, Xray и SSH добавлена проверка фактической доступности соответствующих сетевых endpoint'ов.
+- Повторные уведомления при неизменном состоянии подавляются.
+- Состояние мониторинга сохраняется только после успешной обработки уведомлений, чтобы ошибка отправки не приводила к потере события.
+
+#### Deploy
+
+- Installer обновлён для установки и запуска `zvertbot-vps-monitor.service`.
+- Обновлён состав устанавливаемых systemd-компонентов в соответствии с новой схемой мониторинга.
+- Удалены из deployment устаревшие компоненты legacy Kuma monitoring.
+
+#### Backup
+
+- Скрипт `scripts/backup-to-yandex.sh` приведён в соответствие с новой архитектурой мониторинга.
+- Из состава backup удалены устаревшие `healthcheck.service` и `kuma-webhook.service`.
+- В backup добавлен `zvertbot-vps-monitor.service`.
+- Сохранено резервное копирование базы Uptime Kuma как общего системного компонента VPS.
+- Обновлено описание состава резервной копии и retention.
+
+#### Passport
+
+- Удалены устаревшие проверки и зависимости от legacy Kuma monitoring из passport-проверок.
+- Паспорт бота приведён в соответствие с новой схемой VPS-мониторинга.
+
+### Removed
+
+#### Legacy VPS Monitoring
+
+- Удалён `healthcheck.service`.
+- Удалён `kuma-webhook.service`.
+- Удалена настройка `KUMA_HEALTHCHECK_URL`.
+- Удалён legacy runtime для VPS Healthcheck и Kuma Webhook.
+
+### Fixed
+
+#### VPS Monitoring
+
+- Исправлена обработка systemd oneshot-сервисов: `inactive (dead)` не считается ошибкой сам по себе.
+- Исправлена обработка AWG-сервиса с `RemainAfterExit=yes`.
+- Исправлена проверка backup без зависимости от `systemctl is-active`.
+- Исправлено сохранение состояния мониторинга при ошибке отправки Telegram-уведомления.
+- Исправлена обработка переходов состояний `UP → DOWN` и `DOWN → UP`.
+
+### Documentation
+
+- Обновлена документация deployment с учётом независимого VPS Monitor.
+- Обновлена документация Home Assistant.
+- Обновлён `BOT-PASSPORT.md`.
+- Удалены устаревшие описания legacy Kuma Healthcheck и Kuma Webhook.
+- Документирована новая схема мониторинга VPS.
+
+### Tests
+
+- Добавлены тесты VPS Monitor.
+- Добавлены тесты persistent state мониторинга.
+- Добавлены тесты независимого monitoring runner.
+- Добавлены проверки переходов состояний и подавления повторных уведомлений.
+- Добавлены проверки обработки ошибок отправки уведомлений.
+- Обновлены тесты deployment и legacy monitoring cleanup.
+- Полный набор тестов после изменений проходит успешно. **1472 passed**.
+
+---
+
 ## [1.1.0] - 2026-09-10
 
 ### Added
