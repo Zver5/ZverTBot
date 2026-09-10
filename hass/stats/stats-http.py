@@ -10,6 +10,7 @@ from config.paths import (
     STATS_JSON,
     USAGE_JSON,
 )
+from services.vps_status import build_vps_status
 
 
 def fmt_traffic(b):
@@ -27,7 +28,7 @@ def fmt_traffic(b):
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
-        if self.path != "/stats.json":
+        if self.path not in ("/stats.json", "/vps-status.json"):
             self.send_response(404)
             self.end_headers()
             return
@@ -157,7 +158,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 print(f"Usage parse error: {e}")
 
-        # 4. Отдаём JSON
+        # 4. New stable public VPS contract for Home Assistant.
+        if self.path == "/vps-status.json":
+            result = build_vps_status(result).to_dict()
+
+        # 5. Отдаём JSON
         self.send_response(200)
         self.send_header("Content-type", "application/json")
         self.end_headers()
