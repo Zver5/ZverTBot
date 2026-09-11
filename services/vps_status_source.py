@@ -78,16 +78,11 @@ def _build_awg_clients(
         down = usage_stats.get("downlink", 0)
         up = usage_stats.get("uplink", 0)
 
-        # Preserve the existing legacy behavior for /stats.json.
-        if down == 0 and up == 0 and total_bytes > 0:
-            down = int(total_bytes * 0.7)
-            up = int(total_bytes * 0.3)
-
         registry_entry = awg_registry.get(name, {})
         if not isinstance(registry_entry, dict):
             registry_entry = {}
 
-        total = down + up
+        total = down + up if (down or up) else total_bytes
 
         client_data = {
             "name": name,
@@ -103,7 +98,7 @@ def _build_awg_clients(
             "downlink": down,
             "uplink": up,
             "total": fmt_traffic(total),
-            "total_bytes": total_bytes,
+            "total_bytes": total,
         }
 
         if name in geoip_data:
