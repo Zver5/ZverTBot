@@ -19,7 +19,7 @@ import socket  # noqa: E402
 import subprocess  # noqa: E402
 import time  # noqa: E402
 import urllib.request  # noqa: E402
-from datetime import datetime  # noqa: E402
+from datetime import datetime, timezone  # noqa: E402
 
 # Добавляем корень проекта для запуска напрямую из scripts/
 INSTALL_DIR = Path(__file__).resolve().parent.parent
@@ -332,7 +332,7 @@ for t in timers:
 
 section("🌐 HTTP ПРОВЕРКИ")
 for url, name in [
-    ("http://127.0.0.1:8080/stats.json", "Stats HTTP"),
+    ("http://127.0.0.1:8080/vps-status.json", "Stats HTTP"),
 ]:
     if run(["curl", "-fs", "--max-time", "3", url]):
         ok(f"{name:<25} ДОСТУПЕН")
@@ -818,44 +818,87 @@ def check_json_endpoint(url, name):
 
 
 # ------------------------------------------------------------
-# stats.json
+# vps-status.json — каноническая публичная статистика HASS
 # ------------------------------------------------------------
 
-stats = check_json_endpoint(
-    "http://127.0.0.1:8080/stats.json",
-    "stats.json",
+vps_status = check_json_endpoint(
+    "http://127.0.0.1:8080/vps-status.json",
+    "vps-status.json",
 )
 
-if stats:
+if vps_status:
     required_fields = (
+        "server",
+        "system",
         "services",
-        "peers",
-        "xray_clients",
+        "backup",
+        "fail2ban",
+        "connections",
+        "awg",
+        "xray",
+        "updated_at",
     )
 
-    missing_fields = [key for key in required_fields if key not in stats]
+    missing_fields = [
+        key for key in required_fields if key not in vps_status
+    ]
 
     if missing_fields:
         warn(
-            "stats.json                "
+            "vps-status.json          "
             "НЕКОРРЕКТНО: отсутствуют " + ", ".join(missing_fields)
         )
     else:
-        ok("stats.json                ПРОВЕРЕН")
+        ok("vps-status.json          ПРОВЕРЕН")
 
-    peers = stats.get("peers")
+    awg = vps_status.get("awg")
+    awg_clients = awg.get("clients") if isinstance(awg, dict) else None
 
-    if isinstance(peers, list):
-        ok(f"AWG клиентов               {len(peers)}")
+    if isinstance(awg_clients, list):
+        ok(f"AWG клиентов               {len(awg_clients)}")
     else:
         warn("AWG клиентов               ДАННЫЕ НЕКОРРЕКТНЫ")
 
-    xray_clients = stats.get("xray_clients")
+    xray = vps_status.get("xray")
+    xray_clients = xray.get("clients") if isinstance(xray, dict) else None
 
     if isinstance(xray_clients, list):
         ok(f"Xray клиентов              {len(xray_clients)}")
     else:
         warn("Xray клиентов              ДАННЫЕ НЕКОРРЕКТНЫ")
+
+    updated_at = vps_status.get("updated_at")
+
+    if not isinstance(updated_at, str) or not updated_at:
+        warn("Статистика свежести       TIMESTAMP ОТСУТСТВУЕТ")
+    else:
+        try:
+            checked_at = datetime.fromisoformat(updated_at)
+
+            if checked_at.tzinfo is None:
+                checked_at = checked_at.replace(tzinfo=timezone.utc)
+
+            age = int(
+                (
+                    datetime.now(timezone.utc) - checked_at.astimezone(timezone.utc)
+                ).total_seconds()
+            )
+
+            if age < 0:
+                warn(
+                    "Статистика свежести       "
+                    f"TIMESTAMP ИЗ БУДУЩЕГО ({age}s)"
+                )
+            elif age <= 300:
+                ok(f"Статистика свежести       СВЕЖАЯ ({age}s)")
+            else:
+                warn(f"Статистика свежести       УСТАРЕЛА ({age}s)")
+
+        except ValueError:
+            warn(
+                "Статистика свежести       "
+                f"НЕКОРРЕКТНЫЙ TIMESTAMP ({updated_at})"
+            )
 
 
 section("📁 ФАЙЛЫ ДАННЫХ HASS")
