@@ -31,7 +31,6 @@ def test_config_env_example_contains_required_keys():
         "HA_TUNNEL_IP",
         "XRAY_CONF",
         "AWG_CONF",
-        "KUMA_HEALTHCHECK_URL",
     ]
 
     for key in required:

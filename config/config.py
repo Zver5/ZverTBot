@@ -40,7 +40,6 @@ from config.paths import (
     GEOIP_JSON,
     HASS_DIR,
     IP_TOKENS_FILE,
-    KUMA_STATE_FILE,
     LOG_DIR,
     LOG_FILE,
     PENDING_BINDINGS,
@@ -65,7 +64,6 @@ from config.secrets import (
     BOT_TOKEN,
     HA_TUNNEL_IP,
     HASS_FLAG,
-    KUMA_HEALTHCHECK_URL,
     LLM_API_KEY,
     LLM_API_URL,
     LLM_MODEL,
@@ -80,7 +78,7 @@ from config.secrets import (
 # ═══════════════════════════════════════════════════════
 
 BOT_NAME = "ZverTBot"
-BOT_VERSION = "1.1.0"
+BOT_VERSION = "1.2.0"
 
 
 # ═══════════════════════════════════════════════════════

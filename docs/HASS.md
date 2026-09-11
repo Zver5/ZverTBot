@@ -501,7 +501,6 @@ HTTP-сервер слушает:
 
     geoip-collect.service
     geoip-collect.timer
-    healthcheck.service
     stats-http.service
     vps-stats.service
     vps-stats.timer
@@ -512,7 +511,7 @@ HTTP-сервер слушает:
     xray-traffic.timer
     zvertbot-backup.service
     zvertbot-backup.timer
-    kuma-webhook.service
+    zvertbot-vps-monitor.service
 
 Фактические интервалы timers:
 
@@ -525,9 +524,6 @@ HTTP-сервер слушает:
 
 Все перечисленные timers используют `Persistent=true`.
 Для backup дополнительно задан `AccuracySec=1min`.
-
-`healthcheck.service` является сервисом проверки состояния и не имеет
-отдельного timer в каталоге systemd проекта.
 
 ## 8. Принцип создания Home Assistant entities
 

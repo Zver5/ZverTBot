@@ -1,12 +1,19 @@
 #!/bin/bash
 # Backup script for ZverTBot VPS
-# Version: 2.0
+# Version: 2.1
 #
-# Изменения v2.0:
-# - добавлен бэкап /etc/amnezia/amneziawg/ (реальные файлы, не симлинки)
-# - добавлены исключения *.log и *.tmp в tar (уменьшение размера архива)
-# - синхронизирована версия в заголовке с BACKUP_VERSION
-# - убраны устаревшие пути (/usr/local/etc/vpn-traffic, /root/check_passport_*.py)
+# Назначение:
+# - создаёт полный конфигурационный backup VPS;
+# - сохраняет конфигурацию ZverTBot, Xray, SSH, rclone и firewall;
+# - сохраняет реальные конфигурационные файлы AmneziaWG;
+# - сохраняет systemd-сервисы и timers ZverTBot;
+# - сохраняет базу Uptime Kuma как общий системный компонент VPS;
+# - загружает архив и passport-файлы в облачный remote;
+# - поддерживает локальную и облачную retention-политику;
+# - записывает результат в hass/backup/rclone_backup_status.json.
+#
+# Мониторинг VPS в backup не реализуется.
+# Состояние VPS отслеживает отдельный zvertbot-vps-monitor.service.
 #
 # Восстановление:
 # tar -xzf backup.tar.gz -C /
@@ -18,7 +25,7 @@ set -o pipefail
 # CONFIG
 # ============================================================
 
-BACKUP_VERSION="2.0"
+BACKUP_VERSION="2.1"
 
 # ZverTBot installation directory
 INSTALL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -230,8 +237,7 @@ log_info "backup.section.started | section=services"
 
 for SERVICE in \
 zvertbot.service \
-healthcheck.service \
-kuma-webhook.service \
+zvertbot-vps-monitor.service \
 stats-http.service \
 vps-stats.service \
 xray-traffic.service \
@@ -255,8 +261,7 @@ done
 # systemd overrides
 
 for DIR in \
-/etc/systemd/system/xray.service.d \
-/etc/systemd/system/awg-quick@awg0.service.d
+/etc/systemd/system/xray.service.d
 
 do
 
@@ -582,10 +587,10 @@ fi
 
 
 # ============================================================
-# CLEAN YANDEX
+# CLEAN CLOUD
 # ============================================================
 
-log_info "backup.remote_retention.started"
+log_info "backup.cloud_retention.started"
 
 
 REMOTE_BACKUPS_FILE="${TEMP_DIR}/remote-backups.txt"

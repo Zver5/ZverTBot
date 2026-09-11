@@ -426,7 +426,6 @@ create_env() {
     HASS_FLAG="🌍"
 
 
-    KUMA_URL="http://127.0.0.1:8081/status"
 
 
 
@@ -524,7 +523,6 @@ create_env() {
         "$SERVER_FLAG" \
         "$HA_TUNNEL_IP" \
         "$HASS_FLAG" \
-        "$KUMA_URL" \
         "$XRAY_CONF" \
         "$AWG_CONF" <<'PYENV'
 import sys
@@ -538,7 +536,6 @@ from pathlib import Path
     server_flag,
     ha_tunnel_ip,
     hass_flag,
-    kuma_url,
     xray_conf,
     awg_conf,
 ) = sys.argv[1:]
@@ -553,7 +550,6 @@ values = {
     "SERVER_FLAG": server_flag,
     "HA_TUNNEL_IP": ha_tunnel_ip,
     "HASS_FLAG": hass_flag,
-    "KUMA_HEALTHCHECK_URL": kuma_url,
     "XRAY_CONF": xray_conf,
     "AWG_CONF": awg_conf,
 }
@@ -874,7 +870,7 @@ stats-http.service
 vps-stats.service
 vps-stats.timer
 geoip-collect.timer
-healthcheck.service
+zvertbot-vps-monitor.service
 "
 
 
@@ -923,7 +919,6 @@ healthcheck.service
         OPTIONAL_SERVICES="
 xray-traffic.timer
 zvertbot-backup.timer
-kuma-webhook.service
 "
 
         for service in $OPTIONAL_SERVICES
@@ -962,7 +957,7 @@ echo
 
 CHECKS="
 zvertbot.service
-healthcheck.service
+zvertbot-vps-monitor.service
 stats-http.service
 vps-stats.timer
 geoip-collect.timer

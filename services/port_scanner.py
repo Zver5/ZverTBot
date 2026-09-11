@@ -21,8 +21,6 @@ EXPECTED_PORTS = {
     "51878": {"proto": "UDP", "service": "wireguard", "desc": "WireGuard обычный"},
     # TCP локальные
     "8080": {"proto": "TCP", "service": "stats-http", "desc": "Метрики VPS -> HA"},
-    "8081": {"proto": "TCP", "service": "healthcheck", "desc": "Healthcheck для Kuma"},
-    "8082": {"proto": "TCP", "service": "kuma-webhook", "desc": "Webhook для Kuma"},
     "10085": {"proto": "TCP", "service": "xray-api", "desc": "gRPC StatsService"},
     # Docker
     "3001": {"proto": "TCP", "service": "uptime-kuma", "desc": "Веб-дашборд Kuma"},

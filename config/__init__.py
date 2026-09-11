@@ -26,8 +26,6 @@ from .config import (
     HA_TUNNEL_IP,
     HASS_DIR,
     HASS_FLAG,
-    KUMA_HEALTHCHECK_URL,
-    KUMA_STATE_FILE,
     LOG_DIR,
     LOG_FILE,
     PENDING_BINDINGS,

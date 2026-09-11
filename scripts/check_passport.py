@@ -32,9 +32,22 @@ import unicodedata  # noqa: E402
 from config.paths import AWG_DEFAULT_CONF, XRAY_CONF  # noqa: E402
 from config.secrets import HA_TUNNEL_IP  # noqa: E402
 
-# ==============================
-# ZverTBot SERVER PASSPORT CHECK v1.1
-# ==============================
+# ============================================================
+# ZverTBot SERVER PASSPORT CHECK
+#
+# Диагностическая проверка готовности VPS:
+# - файлы и окружение ZverTBot;
+# - systemd-сервисы и таймеры;
+# - сетевые порты и политика доступа;
+# - SSH и системная безопасность;
+# - Xray / AmneziaWG;
+# - HASS data pipeline;
+# - конфигурация облачного бэкапа.
+#
+# Скрипт НЕ является мониторингом.
+# За событийный мониторинг VPS отвечает отдельный
+# zvertbot-vps-monitor.service.
+# ============================================================
 
 OK = 0
 WARN = 0
@@ -268,7 +281,7 @@ def load_xray_passport_config():
 XRAY_PASSPORT = load_xray_passport_config()
 
 
-header("🐺 ZverTBot SERVER PASSPORT CHECK v1.1")
+header("🐺 ZverTBot SERVER PASSPORT CHECK")
 print(f"{BOLD}Дата:{RESET} {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 print(f"{BOLD}Сервер:{RESET} {socket.gethostname()}")
 print(f"{BOLD}Установка:{RESET} {INSTALL_DIR}")
@@ -286,9 +299,8 @@ section("⚙️ SYSTEMD SERVICES")
 SERVICE_NAME_WIDTH = 32
 
 main_services = [
-    "healthcheck.service",
     "stats-http.service",
-    "kuma-webhook.service",
+    "zvertbot-vps-monitor.service",
 ]
 
 for s in main_services:
@@ -321,7 +333,6 @@ for t in timers:
 section("🌐 HTTP ПРОВЕРКИ")
 for url, name in [
     ("http://127.0.0.1:8080/stats.json", "Stats HTTP"),
-    ("http://127.0.0.1:8081/status", "Healthcheck"),
 ]:
     if run(["curl", "-fs", "--max-time", "3", url]):
         ok(f"{name:<25} ДОСТУПЕН")
@@ -582,8 +593,6 @@ local_services = []
 
 for service_name, pattern in (
     ("stats-http", "stats-http"),
-    ("healthcheck", "healthcheck"),
-    ("kuma-webhook", "kuma-webhook"),
 ):
     port = discover_tcp_port(pattern)
     if port:
@@ -701,16 +710,6 @@ else:
     warn("netfilter-persistent      НЕ АКТИВЕН")
 
 
-section("⚙️ SYSTEMD OVERRIDES")
-check_file("/etc/systemd/system/xray.service.d/limits.conf")
-awg_overrides = sorted(
-    Path("/etc/systemd/system").glob("awg-quick@*.service.d/override.conf")
-)
-
-for override in awg_overrides:
-    check_file(override)
-
-
 section("🗜️ ЛОГИ И ОБНОВЛЕНИЯ")
 
 journald_conf = Path("/etc/systemd/journald.conf")
@@ -745,14 +744,14 @@ else:
     warn("unattended-upgrades           чёрный список не настроен")
 
 
-section("💾 БЭКАПЫ")
+section("💾 БЭКАПЫ В ОБЛАКО")
 
 rclone_conf = Path.home() / ".config" / "rclone" / "rclone.conf"
 
 if rclone_conf.exists():
-    ok(f"Файл: {rclone_conf}")
+    ok(f"Файл-Токен: {rclone_conf}")
 else:
-    warn("rclone token               НЕ НАЙДЕН")
+    warn("Файл-Токен rclone          НЕ НАЙДЕН")
 
 
 section("🔐 XRAY")
@@ -857,22 +856,6 @@ if stats:
         ok(f"Xray клиентов              {len(xray_clients)}")
     else:
         warn("Xray клиентов              ДАННЫЕ НЕКОРРЕКТНЫ")
-
-
-# ------------------------------------------------------------
-# healthcheck
-# ------------------------------------------------------------
-
-health = check_json_endpoint(
-    "http://127.0.0.1:8081/status",
-    "healthcheck",
-)
-
-if health:
-    if health.get("status") in ("healthy", "ok"):
-        ok("состояние healthcheck      НОРМА")
-    else:
-        warn(f"health status             {health.get('status')}")
 
 
 section("📁 ФАЙЛЫ ДАННЫХ HASS")
