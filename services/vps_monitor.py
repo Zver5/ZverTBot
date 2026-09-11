@@ -181,7 +181,7 @@ def check_stats_http() -> MonitorResult:
         return service
 
     healthy, details = _http_check(
-        "http://127.0.0.1:8080/stats.json"
+        "http://127.0.0.1:8080/vps-status.json"
     )
 
     return MonitorResult(

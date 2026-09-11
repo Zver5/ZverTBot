@@ -170,11 +170,14 @@ def test_stats_http_checks_http_endpoint(mock_systemctl):
     with patch(
         "services.vps_monitor._http_check",
         return_value=(True, "HTTP 200"),
-    ):
+    ) as mock_http:
         result = check_stats_http()
 
     assert result.healthy is True
     assert result.details == "HTTP 200"
+    mock_http.assert_called_once_with(
+        "http://127.0.0.1:8080/vps-status.json"
+    )
 
 
 @patch("services.vps_monitor._systemctl")
