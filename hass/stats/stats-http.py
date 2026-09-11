@@ -22,7 +22,7 @@ def fmt_traffic(b):
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
-        if self.path not in ("/stats.json", "/vps-status.json"):
+        if self.path != "/vps-status.json":
             self.send_response(404)
             self.end_headers()
             return
