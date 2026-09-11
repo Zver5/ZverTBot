@@ -54,6 +54,7 @@ def test_build_status_maps_current_stats():
                 "endpoint": "1.2.3.4:5802",
                 "last_ip": "5.6.7.8",
                 "last_seen": "2026-09-11T10:00:00",
+                "hs": "2026-09-11T09:59:55",
                 "rx": "1 GB",
                 "tx": "2 GB",
                 "downlink": 1073741824,
@@ -106,6 +107,11 @@ def test_build_status_maps_current_stats():
     assert result["backup"]["status"] == "success"
     assert result["fail2ban"]["currently_banned"] == 2
     assert result["awg"]["clients"][0]["name"] == "ZverPC"
+    assert result["awg"]["clients"][0]["online"] is True
+    assert result["awg"]["clients"][0]["endpoint"] == "1.2.3.4:5802"
+    assert result["awg"]["clients"][0]["last_ip"] == "5.6.7.8"
+    assert result["awg"]["clients"][0]["last_seen"] == "2026-09-11T10:00:00"
+    assert result["awg"]["clients"][0]["hs"] == "2026-09-11T09:59:55"
     assert result["awg"]["clients"][0]["total_bytes"] == 3221225472
     assert result["awg"]["clients"][0]["downlink"] == 1073741824
     assert result["awg"]["clients"][0]["uplink"] == 2147483648

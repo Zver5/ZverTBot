@@ -93,11 +93,17 @@ def _build_awg_clients(
             "name": name,
             "ip": registry_entry.get("ip", "N/A"),
             "proto": "awg",
+            "online": peer.get("online", False),
+            "endpoint": peer.get("endpoint", "offline"),
+            "last_ip": peer.get("last_ip", ""),
+            "last_seen": peer.get("last_seen", "never"),
+            "hs": peer.get("hs", "never"),
             "rx": fmt_traffic(down),
             "tx": fmt_traffic(up),
             "downlink": down,
             "uplink": up,
             "total": fmt_traffic(total),
+            "total_bytes": total_bytes,
         }
 
         if name in geoip_data:
