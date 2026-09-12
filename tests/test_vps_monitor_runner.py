@@ -318,6 +318,49 @@ def test_data_collectors_are_not_alarm_sources(monkeypatch):
     send.assert_not_called()
 
 
+def test_run_once_logs_state_transition():
+    results = [
+        MonitorResult(
+            name="stats-http",
+            category=MonitorCategory.CRITICAL,
+            healthy=False,
+        )
+    ]
+
+    updates = [
+        update(
+            "stats-http",
+            MonitorState.UP,
+            MonitorState.DOWN,
+            failure=MonitorFailure.HTTP_FAILED,
+            details="HTTP request failed",
+        )
+    ]
+
+    with patch(
+        "services.vps_monitor_runner.check_all",
+        return_value=results,
+    ):
+        with patch(
+            "services.vps_monitor_runner.prepare_results",
+            return_value=(updates, {"stats-http": MonitorState.DOWN}),
+        ):
+            with patch("services.vps_monitor_runner.notify_updates"):
+                with patch("services.vps_monitor_runner.save_states"):
+                    with patch(
+                        "services.vps_monitor_runner.logger.info"
+                    ) as log_info:
+                        run_once()
+
+    log_info.assert_called_once_with(
+        "vps_monitor.state_changed | service=%s | %s -> %s | details=%s",
+        "stats-http",
+        "up",
+        "down",
+        "HTTP request failed",
+    )
+
+
 def test_run_once_checks_processes_and_notifies(monkeypatch):
     results = [
         MonitorResult(
