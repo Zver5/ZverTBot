@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 from services.vps_monitor import MonitorCategory, MonitorState, check_all
 from services.vps_monitor_state import StateUpdate, prepare_results, save_states
+from utils.logger import logger
 
 POLL_INTERVAL_SECONDS = 60
 TELEGRAM_API = "https://api.telegram.org"
@@ -200,8 +201,22 @@ def run_once() -> None:
     }
 
     updates, states = prepare_results(results)
-    notify_updates(updates, categories)
+
+    for update in updates:
+        if (
+            update.previous is not None
+            and update.current != update.previous
+        ):
+            logger.info(
+                "vps_monitor.state_changed | service=%s | %s -> %s | details=%s",
+                update.name,
+                update.previous.value,
+                update.current.value,
+                update.details or "none",
+            )
+
     save_states(states)
+    notify_updates(updates, categories)
 
 
 def main() -> None:
