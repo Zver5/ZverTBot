@@ -215,8 +215,8 @@ def run_once() -> None:
                 update.details or "none",
             )
 
-    notify_updates(updates, categories)
     save_states(states)
+    notify_updates(updates, categories)
 
 
 def main() -> None:

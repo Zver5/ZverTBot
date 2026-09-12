@@ -403,7 +403,7 @@ def test_run_once_checks_processes_and_notifies(monkeypatch):
     save.assert_called_once_with({"zvertbot": MonitorState.DOWN})
 
 
-def test_run_once_does_not_save_state_when_notification_fails():
+def test_run_once_saves_state_before_notification_failure():
     results = [
         MonitorResult(
             name="zvertbot",
@@ -420,6 +420,15 @@ def test_run_once_does_not_save_state_when_notification_fails():
         )
     ]
 
+    events = []
+
+    def save_states_side_effect(states):
+        events.append(("save", states))
+
+    def notify_updates_side_effect(updates, categories):
+        events.append(("notify", updates, categories))
+        raise RuntimeError("Telegram unavailable")
+
     with patch(
         "services.vps_monitor_runner.check_all",
         return_value=results,
@@ -430,17 +439,19 @@ def test_run_once_does_not_save_state_when_notification_fails():
         ):
             with patch(
                 "services.vps_monitor_runner.notify_updates",
-                side_effect=RuntimeError("Telegram unavailable"),
+                side_effect=notify_updates_side_effect,
             ):
                 with patch(
-                    "services.vps_monitor_runner.save_states"
-                ) as save:
+                    "services.vps_monitor_runner.save_states",
+                    side_effect=save_states_side_effect,
+                ):
                     try:
                         run_once()
                     except RuntimeError:
                         pass
 
-    save.assert_not_called()
+    assert events[0] == ("save", {"zvertbot": MonitorState.DOWN})
+    assert events[1][0] == "notify"
 
 
 def test_telegram_failure_does_not_change_state_logic():
