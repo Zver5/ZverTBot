@@ -162,8 +162,7 @@ def test_get_backup_remote_size_returns_na_when_remote_not_configured(monkeypatc
 @patch("services.backup.subprocess.run")
 def test_backup_history_skips_irrelevant_ls_line(mock_run):
     mock_run.return_value.stdout = (
-        "total 8\n"
-        "-rw-r--r-- 1 root root 120M Jul 1 10:00 vps-backup-1.tar.gz\n"
+        "total 8\n-rw-r--r-- 1 root root 120M Jul 1 10:00 vps-backup-1.tar.gz\n"
     )
 
     with patch("builtins.open", side_effect=FileNotFoundError):

@@ -245,8 +245,7 @@ def rename_client(old_name, new_name):
         errors.append("Клиент не найден ни в одном хранилище")
 
     logger.info(
-        "client.rename.completed | old_name=%s | new_name=%s | "
-        "success=%s | errors=%s",
+        "client.rename.completed | old_name=%s | new_name=%s | success=%s | errors=%s",
         old_name,
         new_name,
         success,

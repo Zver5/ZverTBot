@@ -304,7 +304,6 @@ def collect_stats():
     except Exception:
         vpn_total_gb = 0
 
-
     # --- 2. AmneziaWG ---
     # --- 2. AmneziaWG ---
     config_peers = []
@@ -462,9 +461,7 @@ def collect_stats():
             match = re.search(r"Jail list:\s*(.+)", result.stdout)
             if match:
                 jails = [
-                    jail.strip()
-                    for jail in match.group(1).split(",")
-                    if jail.strip()
+                    jail.strip() for jail in match.group(1).split(",") if jail.strip()
                 ]
 
                 total = current = 0
@@ -509,17 +506,11 @@ def collect_stats():
                 for cl in ib.get("settings", {}).get("clients", []):
                     name = cl.get("email", "Unknown")
                     client_id = cl.get("id")
-                    identity = (
-                        (protocol, client_id)
-                        if client_id
-                        else (protocol, name)
-                    )
+                    identity = (protocol, client_id) if client_id else (protocol, name)
                     if identity in seen_xray_clients:
                         continue
                     seen_xray_clients.add(identity)
-                    xray_clients_raw.append(
-                        {"name": name, "id": client_id}
-                    )
+                    xray_clients_raw.append({"name": name, "id": client_id})
     except Exception as e:
         logger.warning("vps_stats.xray_config.load_failed | error=%s", e)
 
@@ -587,7 +578,6 @@ def collect_stats():
             }
             all_conns.append(entry)
 
-
     # --- 7. Xray Clients ---
 
     # --- 7. Xray clients (с online по _delta из usage.json) ---
@@ -646,7 +636,6 @@ def collect_stats():
             rclone_status = json.load(f)
     except Exception as e:
         logger.warning("vps_stats.rclone_status.read_failed | error=%s", e)
-
 
     # --- Public IP сервера ---
     server_ip = SERVER_IP or "unknown"

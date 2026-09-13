@@ -873,8 +873,7 @@ def register_callback_router(bot):
 
             if not authorized:
                 logger.warning(
-                    "callback.denied | chat_id=%s | data=%s | pattern=%s | "
-                    "access=%s",
+                    "callback.denied | chat_id=%s | data=%s | pattern=%s | access=%s",
                     cid,
                     data,
                     route.pattern,

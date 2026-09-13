@@ -443,7 +443,6 @@ class TestClientStatsCallback:
 
         mock_bot.edit_message_text.assert_called_once()
 
-
     def test_stats_worker_reports_error(
         self,
         mock_bot,
@@ -480,8 +479,9 @@ class TestClientStatsCallback:
 
         assert result.text is None
         assert mock_bot.edit_message_text.call_count == 1
-        assert "❌ Ошибка получения статистики: boom" in (
-            mock_bot.edit_message_text.call_args.args[0]
+        assert (
+            "❌ Ошибка получения статистики: boom"
+            in (mock_bot.edit_message_text.call_args.args[0])
         )
 
 

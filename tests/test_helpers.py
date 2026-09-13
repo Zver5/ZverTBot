@@ -699,12 +699,15 @@ def test_safe_edit_message_reply_markup_success_and_error():
 
     bot = Mock()
 
-    assert safe_edit_message_reply_markup(
-        bot,
-        111222,
-        333444,
-        reply_markup="markup",
-    ) is True
+    assert (
+        safe_edit_message_reply_markup(
+            bot,
+            111222,
+            333444,
+            reply_markup="markup",
+        )
+        is True
+    )
 
     bot.edit_message_reply_markup.assert_called_once_with(
         111222,
@@ -712,14 +715,20 @@ def test_safe_edit_message_reply_markup_success_and_error():
         reply_markup="markup",
     )
 
-    with patch(
-        "utils.helpers._telegram_call_with_retry",
-        side_effect=Exception("edit markup failed"),
-    ), patch("utils.helpers.logger.warning") as mock_warning:
-        assert safe_edit_message_reply_markup(
-            bot,
-            111222,
-            333444,
-        ) is False
+    with (
+        patch(
+            "utils.helpers._telegram_call_with_retry",
+            side_effect=Exception("edit markup failed"),
+        ),
+        patch("utils.helpers.logger.warning") as mock_warning,
+    ):
+        assert (
+            safe_edit_message_reply_markup(
+                bot,
+                111222,
+                333444,
+            )
+            is False
+        )
 
     mock_warning.assert_called_once()

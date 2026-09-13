@@ -133,10 +133,38 @@ install_packages() {
         sleep 10
     done
 
+    info "Checking package manager state"
+
+    DPKG_AUDIT=$(dpkg --audit 2>&1 || true)
+    if [ -n "$DPKG_AUDIT" ]; then
+        echo "$DPKG_AUDIT"
+        fail "dpkg has unfinished package operations"
+    fi
+
+    APT_CHECK_LOG=$(mktemp)
+    if ! apt-get check >"$APT_CHECK_LOG" 2>&1; then
+        cat "$APT_CHECK_LOG"
+        rm -f "$APT_CHECK_LOG"
+        fail "Package manager has broken dependencies"
+    fi
+    rm -f "$APT_CHECK_LOG"
+
     info "Updating package list"
 
-    apt-get update -y >/dev/null
+    APT_UPDATE_LOG=$(mktemp)
+    if ! apt-get update -y >"$APT_UPDATE_LOG" 2>&1; then
+        cat "$APT_UPDATE_LOG"
+        rm -f "$APT_UPDATE_LOG"
+        fail "Failed to update package list"
+    fi
 
+    if grep -qE '(^|[[:space:]])(Err:|Failed to fetch)' "$APT_UPDATE_LOG"; then
+        cat "$APT_UPDATE_LOG"
+        rm -f "$APT_UPDATE_LOG"
+        fail "Failed to update package list"
+    fi
+
+    rm -f "$APT_UPDATE_LOG"
 
     PACKAGE_FILE="${INSTALL_DIR}/deploy/botinstaller/packages.txt"
 
@@ -151,9 +179,32 @@ install_packages() {
 
     info "Installing system packages"
 
+    APT_INSTALL_LOG=$(mktemp)
 
-    DEBIAN_FRONTEND=noninteractive apt-get install -y $PACKAGES >/dev/null
+    if ! DEBIAN_FRONTEND=noninteractive apt-get install -y $PACKAGES >"$APT_INSTALL_LOG" 2>&1; then
+        cat "$APT_INSTALL_LOG"
+        rm -f "$APT_INSTALL_LOG"
+        fail "Failed to install system packages"
+    fi
 
+    cat "$APT_INSTALL_LOG"
+    rm -f "$APT_INSTALL_LOG"
+
+    info "Validating package manager state"
+
+    DPKG_AUDIT=$(dpkg --audit 2>&1 || true)
+    if [ -n "$DPKG_AUDIT" ]; then
+        echo "$DPKG_AUDIT"
+        fail "dpkg has unfinished package operations after package installation"
+    fi
+
+    APT_CHECK_LOG=$(mktemp)
+    if ! apt-get check >"$APT_CHECK_LOG" 2>&1; then
+        cat "$APT_CHECK_LOG"
+        rm -f "$APT_CHECK_LOG"
+        fail "Package manager has broken dependencies after package installation"
+    fi
+    rm -f "$APT_CHECK_LOG"
 
     ok "System packages installed"
 
@@ -876,17 +927,21 @@ zvertbot-vps-monitor.service
 
     for service in $CORE_SERVICES
     do
-        if ! systemctl enable "$service" >/dev/null 2>&1; then
-            fail "Failed to enable $service"
-        fi
-
-        if ! systemctl restart "$service" >/dev/null 2>&1; then
-            fail "Failed to start $service"
-        fi
-
         if [[ "$service" == *.timer ]]; then
+            if ! systemctl enable --now "$service" >/dev/null 2>&1; then
+                fail "Failed to enable/start $service"
+            fi
+
             if ! systemctl is-active --quiet "$service"; then
                 fail "$service is not active after start"
+            fi
+        else
+            if ! systemctl enable "$service" >/dev/null 2>&1; then
+                fail "Failed to enable $service"
+            fi
+
+            if ! systemctl restart "$service" >/dev/null 2>&1; then
+                fail "Failed to start $service"
             fi
         fi
 
@@ -923,17 +978,21 @@ zvertbot-backup.timer
 
         for service in $OPTIONAL_SERVICES
         do
-            if ! systemctl enable "$service" >/dev/null 2>&1; then
-                fail "Failed to enable optional $service"
-            fi
-
-            if ! systemctl restart "$service" >/dev/null 2>&1; then
-                fail "Failed to start optional $service"
-            fi
-
             if [[ "$service" == *.timer ]]; then
+                if ! systemctl enable --now "$service" >/dev/null 2>&1; then
+                    fail "Failed to enable/start optional $service"
+                fi
+
                 if ! systemctl is-active --quiet "$service"; then
                     fail "Optional $service is not active after start"
+                fi
+            else
+                if ! systemctl enable "$service" >/dev/null 2>&1; then
+                    fail "Failed to enable optional $service"
+                fi
+
+                if ! systemctl restart "$service" >/dev/null 2>&1; then
+                    fail "Failed to start optional $service"
                 fi
             fi
 
@@ -961,6 +1020,7 @@ zvertbot-vps-monitor.service
 stats-http.service
 vps-stats.timer
 geoip-collect.timer
+xray-traffic.timer
 "
 
 for s in $CHECKS
@@ -979,6 +1039,7 @@ echo -e "${CYAN}Checking timers...${NC}"
 TIMERS="
 vps-stats.timer
 geoip-collect.timer
+xray-traffic.timer
 "
 
 for t in $TIMERS
@@ -1022,7 +1083,6 @@ echo
 
 main() {
 
-banner
 
 
 check_root
@@ -1032,6 +1092,7 @@ check_os
 check_network
 
 extract_archive
+banner
 
 CHECK_SCRIPT="${INSTALL_DIR}/deploy/botinstaller/checks.sh"
 

@@ -494,8 +494,7 @@ def test_handle_ticket_reply_cancel_edit_exception(mock_bot, mock_call):
     assert result.show_alert is False
     mock_warning.assert_called_once()
     assert mock_warning.call_args.args[0] == (
-        "ticket.reply.cancel_message_update_failed | "
-        "chat_id=%s | error=%s"
+        "ticket.reply.cancel_message_update_failed | chat_id=%s | error=%s"
     )
     assert mock_warning.call_args.args[1] == 111222
     assert str(mock_warning.call_args.args[2]) == "edit failed"
@@ -593,8 +592,7 @@ def test_process_ticket_reply_admin_notification_exception(mock_bot):
 
     mock_error.assert_called_once()
     assert mock_error.call_args.args[0] == (
-        "ticket.reply.notification_failed | ticket_id=%s | "
-        "admin_id=%s | error=%s"
+        "ticket.reply.notification_failed | ticket_id=%s | admin_id=%s | error=%s"
     )
     assert mock_error.call_args.args[1] == "abc123"
     assert mock_error.call_args.args[2] == 999888
@@ -622,8 +620,7 @@ def test_process_ticket_description_cancel_edit_exception(mock_bot):
 
     mock_warning.assert_called_once()
     assert mock_warning.call_args.args[0] == (
-        "ticket.creation.cancel_message_update_failed | "
-        "chat_id=%s | error=%s"
+        "ticket.creation.cancel_message_update_failed | chat_id=%s | error=%s"
     )
     assert mock_warning.call_args.args[1] == 111222
     assert str(mock_warning.call_args.args[2]) == "edit failed"
@@ -820,8 +817,7 @@ def test_process_ticket_description_logs_markup_exception(mock_bot):
 
     mock_warning.assert_called_once()
     assert mock_warning.call_args.args[0] == (
-        "ticket.creation.cleanup_message_failed | "
-        "ticket_id=%s | chat_id=%s | error=%s"
+        "ticket.creation.cleanup_message_failed | ticket_id=%s | chat_id=%s | error=%s"
     )
     assert mock_warning.call_args.args[1] == "test1234"
     assert mock_warning.call_args.args[2] == 111222
@@ -867,8 +863,7 @@ def test_process_ticket_description_admin_keyboard_exception_is_logged(mock_bot)
 
     mock_error.assert_called_once()
     assert mock_error.call_args.args[0] == (
-        "ticket.creation.notification_failed | "
-        "ticket_id=%s | admin_id=%s | error=%s"
+        "ticket.creation.notification_failed | ticket_id=%s | admin_id=%s | error=%s"
     )
     assert mock_error.call_args.args[1] == "test1234"
     assert mock_error.call_args.args[2] == 999888

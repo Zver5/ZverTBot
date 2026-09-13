@@ -303,7 +303,6 @@ def test_handle_fail2ban_callback_suppresses_telegram_message_error(
     assert result is False
 
 
-
 def test_render_fail2ban_unban_input_edits_message(mock_bot):
     with (
         patch(

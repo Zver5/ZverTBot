@@ -160,6 +160,7 @@ def test_udp_failed_message():
     assert "🔴 Сервис запущен, но порт недоступен" in text
     assert "systemd: active · UDP: failed" in text
 
+
 def test_backup_failed_message():
     text = _format_update(
         update(
@@ -192,6 +193,7 @@ def test_backup_stale_message():
     assert "🔴 Бэкап просрочен" in text
     assert "последний: 10 ч 0 мин назад" in text
 
+
 def test_details_are_html_escaped():
     text = _format_update(
         update(
@@ -206,12 +208,11 @@ def test_details_are_html_escaped():
     assert "&lt;danger&gt; &amp; broken" in text
     assert "<danger>" not in text
 
+
 def test_non_transition_is_not_sent(monkeypatch):
     monkeypatch.setenv("ADMIN_CHAT", "123")
 
-    with patch(
-        "services.vps_monitor_runner._telegram_send"
-    ) as send:
+    with patch("services.vps_monitor_runner._telegram_send") as send:
         notify_updates(
             [
                 update(
@@ -230,9 +231,7 @@ def test_non_transition_is_not_sent(monkeypatch):
 def test_down_transition_is_sent(monkeypatch):
     monkeypatch.setenv("ADMIN_CHAT", "123")
 
-    with patch(
-        "services.vps_monitor_runner._telegram_send"
-    ) as send:
+    with patch("services.vps_monitor_runner._telegram_send") as send:
         notify_updates(
             [
                 update(
@@ -252,9 +251,7 @@ def test_down_transition_is_sent(monkeypatch):
 def test_recovery_transition_is_sent(monkeypatch):
     monkeypatch.setenv("ADMIN_CHAT", "123")
 
-    with patch(
-        "services.vps_monitor_runner._telegram_send"
-    ) as send:
+    with patch("services.vps_monitor_runner._telegram_send") as send:
         notify_updates(
             [
                 update(
@@ -274,9 +271,7 @@ def test_recovery_transition_is_sent(monkeypatch):
 def test_multiple_admin_chats_receive_same_event(monkeypatch):
     monkeypatch.setenv("ADMIN_CHATS", "111,222")
 
-    with patch(
-        "services.vps_monitor_runner._telegram_send"
-    ) as send:
+    with patch("services.vps_monitor_runner._telegram_send") as send:
         notify_updates(
             [
                 update(
@@ -298,9 +293,7 @@ def test_multiple_admin_chats_receive_same_event(monkeypatch):
 def test_data_collectors_are_not_alarm_sources(monkeypatch):
     monkeypatch.setenv("ADMIN_CHAT", "123")
 
-    with patch(
-        "services.vps_monitor_runner._telegram_send"
-    ) as send:
+    with patch("services.vps_monitor_runner._telegram_send") as send:
         notify_updates(
             [
                 update(
@@ -309,10 +302,7 @@ def test_data_collectors_are_not_alarm_sources(monkeypatch):
                     MonitorState.DOWN,
                 )
             ],
-            {
-                "xray-traffic-collect":
-                    MonitorCategory.DATA_COLLECTOR
-            },
+            {"xray-traffic-collect": MonitorCategory.DATA_COLLECTOR},
         )
 
     send.assert_not_called()
@@ -347,9 +337,7 @@ def test_run_once_logs_state_transition():
         ):
             with patch("services.vps_monitor_runner.notify_updates"):
                 with patch("services.vps_monitor_runner.save_states"):
-                    with patch(
-                        "services.vps_monitor_runner.logger.info"
-                    ) as log_info:
+                    with patch("services.vps_monitor_runner.logger.info") as log_info:
                         run_once()
 
     log_info.assert_called_once_with(
@@ -386,12 +374,8 @@ def test_run_once_checks_processes_and_notifies(monkeypatch):
             "services.vps_monitor_runner.prepare_results",
             return_value=(updates, {"zvertbot": MonitorState.DOWN}),
         ) as process:
-            with patch(
-                "services.vps_monitor_runner.notify_updates"
-            ) as notify:
-                with patch(
-                    "services.vps_monitor_runner.save_states"
-                ) as save:
+            with patch("services.vps_monitor_runner.notify_updates") as notify:
+                with patch("services.vps_monitor_runner.save_states") as save:
                     run_once()
 
     check.assert_called_once()

@@ -150,9 +150,7 @@ def test_search_process_found(mock_run):
 
 @patch("services.processes.subprocess.run")
 def test_search_process_escapes_markdown_once(mock_run):
-    mock_run.return_value = Mock(
-        returncode=0, stdout="1234 worker*prod `test`\n"
-    )
+    mock_run.return_value = Mock(returncode=0, stdout="1234 worker*prod `test`\n")
 
     text = search_process_by_name("worker")
 

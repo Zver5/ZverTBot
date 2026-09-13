@@ -33,8 +33,7 @@ def build_client_card(username: str, proto: str) -> str:
                 return header
 
             servers = "".join(
-                f"🌐 *Сервер {index}:* `{SERVER_IP}:{port}`\n"
-                f"🔹 SNI: `{sni}`\n"
+                f"🌐 *Сервер {index}:* `{SERVER_IP}:{port}`\n🔹 SNI: `{sni}`\n"
                 for index, (port, sni) in enumerate(sorted(sni_by_port.items()), 1)
             )
 

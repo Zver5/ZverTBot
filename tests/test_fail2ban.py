@@ -113,7 +113,40 @@ def test_logs_bad_line(mock_run):
 
     text = get_fail2ban_logs()
 
-    assert "broken line" in text
+    assert "не найдено" in text
+    assert "broken line" not in text
+
+
+@patch("services.fail2ban.subprocess.run")
+def test_logs_ignore_preauth_connection(mock_run):
+    mock_run.return_value = Mock(
+        returncode=0,
+        stdout=(
+            "2026-09-11 02:10:36,123 fail2ban.actions [123]: "
+            "NOTICE [sshd] Connection closed by 94.45.205.17 port 12345 [preauth]\n"
+        ),
+    )
+
+    text = get_fail2ban_logs()
+
+    assert "не найдено" in text
+    assert "94.45.205.17" not in text
+
+
+@patch("services.fail2ban.subprocess.run")
+def test_logs_ignore_invalid_ip(mock_run):
+    mock_run.return_value = Mock(
+        returncode=0,
+        stdout=(
+            "2026-09-11 02:10:36,123 fail2ban.actions [123]: "
+            "NOTICE [sshd] Ban 02:10:36)\n"
+        ),
+    )
+
+    text = get_fail2ban_logs()
+
+    assert "не найдено" in text
+    assert "02:10:36)" not in text
 
 
 def test_unban_invalid_ip():
@@ -144,12 +177,34 @@ Jail list: sshd
 """,
         ),
         Mock(returncode=0, stdout="1.2.3.4"),
+        Mock(returncode=0, stdout="1.2.3.4"),
     ]
 
     ok, msg = unban_ip("1.2.3.4")
 
     assert ok is True
     assert "разбанен" in msg
+
+
+@patch("services.fail2ban.subprocess.run")
+def test_unban_command_error(mock_run):
+    mock_run.side_effect = [
+        Mock(
+            returncode=0,
+            stdout="""
+Status
+Jail list: sshd
+""",
+        ),
+        Mock(returncode=0, stdout="1.2.3.4"),
+        Mock(returncode=1, stdout="", stderr="permission denied"),
+    ]
+
+    ok, msg = unban_ip("1.2.3.4")
+
+    assert ok is False
+    assert "Ошибка разбана" in msg
+    assert "permission denied" in msg
 
 
 @patch("services.fail2ban.subprocess.run")
@@ -167,8 +222,8 @@ Jail list: sshd
 
     ok, msg = unban_ip("1.2.3.4")
 
-    assert ok is False
-    assert "не найден" in msg
+    assert ok is True
+    assert "уже не заблокирован" in msg
 
 
 @patch("services.fail2ban.subprocess.run")
@@ -238,8 +293,7 @@ Status for jail: sshd
 
     assert "sshd" in text
     mock_warning.assert_called_once_with(
-        "fail2ban.status.invalid_banned_count | "
-        "field=currently_banned | value=%s",
+        "fail2ban.status.invalid_banned_count | field=currently_banned | value=%s",
         "invalid",
     )
 
@@ -271,7 +325,6 @@ Status for jail: sshd
 
     assert "sshd" in text
     mock_warning.assert_called_once_with(
-        "fail2ban.status.invalid_banned_count | "
-        "field=total_banned | value=%s",
+        "fail2ban.status.invalid_banned_count | field=total_banned | value=%s",
         "invalid",
     )

@@ -346,7 +346,6 @@ class TestProcessKillHandler:
             "❌ Неверный формат PID",
         )
 
-
     def test_kill_admin_calls_kill(self, mock_message, mock_bot):
         """Тест: админ вызывает kill_process_by_pid"""
         mock_message.text = "1234"

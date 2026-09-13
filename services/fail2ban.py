@@ -4,6 +4,8 @@ services/fail2ban.py
 Функции: статус jail, логи банов, разбан IP.
 """
 
+import ipaddress
+import re
 import subprocess
 
 from config.paths import FAIL2BAN_LOG
@@ -108,52 +110,71 @@ def get_fail2ban_status():
 
 
 def get_fail2ban_logs(limit=10):
-    """Получает последние баны из логов fail2ban"""
+    """Получает последние реальные события Ban из логов Fail2ban."""
     try:
-        # Читаем лог fail2ban
         result = subprocess.run(
             ["grep", "Ban ", FAIL2BAN_LOG],
             capture_output=True,
             text=True,
         )
+
         if result.returncode != 0:
-            # Пробуем journalctl
             result = subprocess.run(
-                ["journalctl", "-u", "fail2ban", "-n", "50", "--no-pager"],
+                ["journalctl", "-u", "fail2ban", "-n", "100", "--no-pager"],
                 capture_output=True,
                 text=True,
             )
-            lines = [line for line in result.stdout.split("\n") if "Ban " in line]
+            lines = result.stdout.splitlines()
         else:
-            lines = result.stdout.strip().split("\n")
+            lines = result.stdout.splitlines()
 
-        if not lines:
+        entries = []
+
+        for line in lines:
+            match = re.search(
+                r"(?P<date>\d{4}-\d{2}-\d{2})"
+                r"[ T]"
+                r"(?P<time>\d{2}:\d{2}:\d{2})"
+                r"(?:,\d+)?"
+                r".*?\[(?P<jail>[^\]]+)\]"
+                r"\s+Ban\s+"
+                r"(?P<ip>[^\s]+)",
+                line,
+            )
+
+            if not match:
+                continue
+
+            ip = match.group("ip").strip("[](),")
+
+            try:
+                ipaddress.ip_address(ip)
+            except ValueError:
+                logger.debug(
+                    "fail2ban.logs.invalid_ip | ip=%s | line=%s",
+                    ip,
+                    line[:160],
+                )
+                continue
+
+            entries.append(
+                (
+                    match.group("date"),
+                    match.group("time"),
+                    match.group("jail"),
+                    ip,
+                )
+            )
+
+        if not entries:
             return "📜 *Последние баны*\n\n❌ Банов не найдено"
 
-        # Берём последние N записей
-        recent = lines[-limit:]
+        recent = entries[-limit:]
 
         text = f"📜 *Последние {len(recent)} банов:*\n\n"
 
-        for i, line in enumerate(recent, 1):
-            # Парсим строку: 2026-06-30 12:45:03,991 fail2ban.actions
-            # [449]: NOTICE [sshd] Ban 62.60.130.219
-            try:
-                parts = line.split()
-                if len(parts) < 6:
-                    raise ValueError(f"Log line has {len(parts)} parts, expected >= 6")
-                date = parts[0]
-                time = parts[1].split(",")[0]
-                jail = parts[5].strip("[]")
-                ip = parts[-1]
-
-                text += f"{i}. `{ip}` | {jail} | {date} {time}\n"
-            except Exception as e:
-                logger.debug(
-                    "fail2ban.logs.parse_failed | error=%s",
-                    e,
-                )
-                text += f"{i}. {line[:80]}...\n"
+        for i, (date, time, jail, ip) in enumerate(recent, 1):
+            text += f"{i}. `{ip}` | {jail} | {date} {time}\n"
 
         return text
     except Exception as e:
@@ -165,13 +186,11 @@ def get_fail2ban_logs(limit=10):
 
 
 def unban_ip(ip_address):
-    """Разбанивает IP во всех jail"""
+    """Разбанивает IP во всех jail."""
     try:
-        # Проверяем валидность IP
         if not validate_ip(ip_address):
             return False, "❌ Неверный формат IP"
 
-        # Получаем список jail
         result = subprocess.run(
             ["fail2ban-client", "status"],
             capture_output=True,
@@ -183,27 +202,55 @@ def unban_ip(ip_address):
         jail_list = []
         for line in result.stdout.splitlines():
             key, separator, value = line.partition(":")
+            if not separator:
+                continue
+
             key = key.lstrip("`|- ").strip()
-            if key == "Jail list" and separator:
+            if key == "Jail list":
                 jail_list = [j.strip() for j in value.split(",") if j.strip()]
 
-        unbanned_from = []
+        banned_in = []
 
-        # Пытаемся разбанить в каждом jail
         for jail in jail_list:
+            result = subprocess.run(
+                ["fail2ban-client", "get", jail, "banip"],
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode != 0:
+                logger.warning(
+                    "fail2ban.unban.ban_list_failed | jail=%s | error=%s",
+                    jail,
+                    result.stderr.strip(),
+                )
+                continue
+
+            banned_ips = set(result.stdout.split())
+
+            if ip_address not in banned_ips:
+                continue
+
             result = subprocess.run(
                 ["fail2ban-client", "set", jail, "unbanip", ip_address],
                 capture_output=True,
                 text=True,
             )
-            if result.returncode == 0 and ip_address in result.stdout:
-                unbanned_from.append(jail)
 
-        if unbanned_from:
-            jails = ", ".join(unbanned_from)
-            return True, (f"✅ IP {ip_address} разбанен в jail: {jails}")
-        else:
-            return False, f"⚠️ IP {ip_address} не найден в бан-листах"
+            if result.returncode != 0:
+                return False, (
+                    f"❌ Ошибка разбана IP {ip_address} "
+                    f"в jail {jail}: {result.stderr.strip()}"
+                )
+
+            banned_in.append(jail)
+
+        if banned_in:
+            jails = ", ".join(banned_in)
+            return True, f"✅ IP {ip_address} разбанен в jail: {jails}"
+
+        return True, f"ℹ️ IP {ip_address} уже не заблокирован"
+
     except Exception as e:
         logger.error(
             "fail2ban.unban.failed | error=%s",

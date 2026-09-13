@@ -484,10 +484,7 @@ def test_callback_router_ignores_unmatched_callback(monkeypatch):
     router.register_callback_router(bot)
     bot.callback_handler(FakeCall())
 
-    assert any(
-        args[0] == "callback.unmatched | chat_id=%s | data=%s"
-        for args in logs
-    )
+    assert any(args[0] == "callback.unmatched | chat_id=%s | data=%s" for args in logs)
 
 
 def test_callback_router_calls_authorized_handler(monkeypatch):
@@ -584,7 +581,9 @@ def test_callback_router_logs_completed_event(monkeypatch):
     completed = [
         args
         for args in logs
-        if args and args[0] == (
+        if args
+        and args[0]
+        == (
             "callback.completed | chat_id=%s | data=%s | pattern=%s | "
             "result=%r | elapsed_ms=%.1f"
         )
@@ -697,10 +696,7 @@ def test_callback_router_logs_handler_exception_and_closes_callback(
     assert answered == ["callback-error"]
     assert len(errors) == 1
     message, args = errors[0]
-    assert (
-        message
-        == "callback.failed | callback_id=%s | data=%r | elapsed_ms=%.1f"
-    )
+    assert message == "callback.failed | callback_id=%s | data=%r | elapsed_ms=%.1f"
     assert args[0:2] == ("callback-error", "test:error")
     assert isinstance(args[2], float)
     assert args[2] >= 0

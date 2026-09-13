@@ -186,6 +186,7 @@ def test_rename_client_in_usage_not_dict(tmp_path):
 
     assert result is False
 
+
 def test_load_usage_logs_standardized_error(tmp_path):
     test_file = tmp_path / "usage.json"
     test_file.write_text("{invalid json")
@@ -347,41 +348,49 @@ def test_collect_deduplicates_xray_client_across_inbounds(monkeypatch, tmp_path)
     usage_file = tmp_path / "usage.json"
     config_file = tmp_path / "config.json"
 
-    usage_file.write_text(json.dumps({
-        "clients": {
-            "ZverX": {
-                "uplink": 500,
-                "downlink": 500,
-                "total": 1000,
-                "_snap_up": 1000,
-                "_snap_down": 2000,
-                "proto": "vless",
+    usage_file.write_text(
+        json.dumps(
+            {
+                "clients": {
+                    "ZverX": {
+                        "uplink": 500,
+                        "downlink": 500,
+                        "total": 1000,
+                        "_snap_up": 1000,
+                        "_snap_down": 2000,
+                        "proto": "vless",
+                    }
+                }
             }
-        }
-    }))
+        )
+    )
 
-    config_file.write_text(json.dumps({
-        "inbounds": [
+    config_file.write_text(
+        json.dumps(
             {
-                "port": 443,
-                "protocol": "vless",
-                "settings": {
-                    "clients": [
-                        {"email": "ZverX", "id": uuid},
-                    ]
-                },
-            },
-            {
-                "port": 2096,
-                "protocol": "vless",
-                "settings": {
-                    "clients": [
-                        {"email": "ZverX", "id": uuid},
-                    ]
-                },
-            },
-        ]
-    }))
+                "inbounds": [
+                    {
+                        "port": 443,
+                        "protocol": "vless",
+                        "settings": {
+                            "clients": [
+                                {"email": "ZverX", "id": uuid},
+                            ]
+                        },
+                    },
+                    {
+                        "port": 2096,
+                        "protocol": "vless",
+                        "settings": {
+                            "clients": [
+                                {"email": "ZverX", "id": uuid},
+                            ]
+                        },
+                    },
+                ]
+            }
+        )
+    )
 
     monkeypatch.setattr(module, "OUT", str(usage_file))
     monkeypatch.setattr(module, "XRAY_CONF", config_file)

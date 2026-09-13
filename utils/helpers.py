@@ -3,7 +3,6 @@
 Модуль НЕ зависит от VPN-логики, только от telebot (safe_delete).
 """
 
-
 import requests
 from telebot.apihelper import ApiTelegramException
 

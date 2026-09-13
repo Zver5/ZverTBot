@@ -155,9 +155,7 @@ def search_process_by_name(name):
             parts = line.split(None, 1)
             if len(parts) == 2:
                 pid, cmd = parts
-                cmd = (
-                    cmd[:60].replace("*", "\\*").replace("`", "\\`")
-                )
+                cmd = cmd[:60].replace("*", "\\*").replace("`", "\\`")
                 text += f"`{pid}` {cmd}\n"
         return text
     except Exception as e:
