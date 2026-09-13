@@ -200,54 +200,14 @@ XRAY_LOG_PATTERN = re.compile(
 
 
 def get_xray_clients_from_log() -> dict[str, str]:
-    """
-    Берёт последние подключения Xray из access.log.
-
-    Возвращает:
-        email -> последний IP
-    """
-    clients: dict[str, str] = {}
-
-    if not XRAY_ACCESS_LOG.exists():
-        return clients
-
+    """Return the last known IP for each Xray client from access.log."""
     try:
-        result = subprocess.run(
-            ["tail", "-n", "5000", str(XRAY_ACCESS_LOG)],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        from services.xray.access_log import get_last_client_ips
 
-        for line in result.stdout.splitlines():
-            match = XRAY_LOG_PATTERN.search(line)
-
-            if not match:
-                continue
-
-            raw_ip, email = match.groups()
-            ip = raw_ip.strip("[]")
-
-            try:
-                ip = str(ipaddress.ip_address(ip))
-            except ValueError:
-                continue
-
-            clients[email] = ip
-
-    except FileNotFoundError:
-        logger.warning("geoip.xray.tail_command_not_found")
-    except subprocess.CalledProcessError as exc:
-        logger.error("geoip.xray.log_read_failed | error=%s", exc)
+        return get_last_client_ips(XRAY_ACCESS_LOG, 5000)
     except Exception as exc:
         logger.error("geoip.xray.log_parse_failed | error=%s", exc)
-
-    return clients
-
-
-# ------------------------------------------------------------------
-# ASN database
-# ------------------------------------------------------------------
+        return {}
 
 
 def load_asn_types() -> dict[str, dict[str, Any]]:

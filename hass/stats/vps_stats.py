@@ -2,7 +2,6 @@
 import importlib.util
 import json
 import logging
-import os
 import re
 import subprocess
 import sys
@@ -202,30 +201,13 @@ def get_services_status():
 
 # --- Xray real client IP from access.log ---
 def get_xray_online_ips():
-    result = {}
-
     try:
-        log_file = XRAY_ACCESS_LOG
+        from services.xray.access_log import get_last_client_ips
 
-        if not os.path.exists(log_file):
-            return result
-
-        with open(log_file, errors="ignore") as f:
-            lines = f.readlines()[-500:]
-
-        for line in lines:
-            m = re.search(r"from ([0-9.]+):\d+ .*email: ([^\s]+)", line)
-
-            if m:
-                ip = m.group(1)
-                name = m.group(2)
-
-                result[name] = ip
-
+        return get_last_client_ips(XRAY_ACCESS_LOG, 500)
     except Exception as e:
         logger.warning("vps_stats.xray_access_log.read_failed | error=%s", e)
-
-    return result
+        return {}
 
 
 def fmt_hs(raw):

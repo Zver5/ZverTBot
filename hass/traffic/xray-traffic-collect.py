@@ -11,7 +11,6 @@ from pathlib import Path
 import grpc
 
 from utils.atomic import atomic_write
-from utils.client_operation_lock import client_operation_lock
 from utils.logger import logger
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -216,32 +215,15 @@ def get_awg_raw_stats():
 
 
 def get_xray_last_ips():
-    result = {}
-
     try:
-        log_file = paths.XRAY_ACCESS_LOG
+        from services.xray.access_log import get_last_client_ips
 
-        if not os.path.exists(log_file):
-            return result
-
-        with open(log_file, errors="ignore") as f:
-            lines = f.readlines()[-1000:]
-
-        for line in lines:
-            m = re.search(r"from ([0-9.]+):\d+ .*email: ([^\s]+)", line)
-
-            if m:
-                ip = m.group(1)
-                name = m.group(2)
-                result[name] = ip
-
+        return get_last_client_ips(paths.XRAY_ACCESS_LOG, 1000)
     except Exception as e:
         log(f"IP parse error: {e}")
+        return {}
 
-    return result
 
-
-@client_operation_lock
 def collect():
     old = {}
     if os.path.exists(OUT):
