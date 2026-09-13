@@ -320,73 +320,13 @@ def collect_stats():
         if cur["key"]:
             config_peers.append(cur)
 
-    live_peers = {}
-    cur = {}
-    for line in run(["awg", "show", "awg0"]).split("\n"):
-        s = line.strip()
-        low = s.lower()
-        if low.startswith("peer:"):
-            if cur.get("key"):
-                live_peers[cur["key"]] = cur
-            cur = {
-                "key": re.sub(r"\s+", "", s.split(":", 1)[1]),
-                "endpoint": "",
-                "ip": "",
-                "hs": "never",
-                "rx": 0.0,
-                "tx": 0.0,
-            }
-        elif low.startswith("endpoint"):
-            val = s.split(":", 1)[1].strip()
-            cur["endpoint"] = "" if val in ["(none)", "(no endpoint)", "-"] else val
-        elif "allowed" in low and "ip" in low:
-            cur["ip"] = s.split(":", 1)[1].strip().split("/")[0]
-        elif "handshake" in low:
-            cur["hs"] = fmt_hs(s.split("latest handshake:", 1)[1].strip())
-        elif low.startswith("transfer"):
-            rx = re.search(r"([\d.]+)\s*(KiB|MiB|GiB|B)\s*received", s)
-            tx = re.search(r"([\d.]+)\s*(KiB|MiB|GiB|B)\s*sent", s)
-            if rx:
-                v, u = float(rx.group(1)), rx.group(2)
-                cur["rx"] = (
-                    v
-                    if u == "GiB"
-                    else v / 1024
-                    if u == "MiB"
-                    else v / 1048576
-                    if u == "KiB"
-                    else v / 1073741824
-                )
-            if tx:
-                v, u = float(tx.group(1)), tx.group(2)
-                cur["tx"] = (
-                    v
-                    if u == "GiB"
-                    else v / 1024
-                    if u == "MiB"
-                    else v / 1048576
-                    if u == "KiB"
-                    else v / 1073741824
-                )
-    if cur.get("key"):
-        live_peers[cur["key"]] = cur
+    from services.awg.runtime import extract_endpoint_ip, get_runtime_peers
 
-    # Получаем точные времена handshake (unix timestamp) для надежной проверки online
-    hs_times = {}
-    try:
-        hs_out = subprocess.run(
-            ["awg", "show", "awg0", "latest-handshakes"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=True,
-        ).stdout.strip()
-        for line in hs_out.split("\n"):
-            if "\t" in line:
-                key, ts = line.split("\t")
-                hs_times[key.strip()] = int(ts)
-    except Exception as e:
-        logger.warning("vps_stats.awg.handshake_check_failed | error=%s", e)
+    live_peers = get_runtime_peers()
+
+    from services.awg.runtime import get_latest_handshakes
+
+    hs_times = get_latest_handshakes()
 
     wg_peers = []
     for c in config_peers:
@@ -401,15 +341,15 @@ def collect_stats():
         }
         lp = live_peers.get(c["key"])
         if lp:
-            if lp["endpoint"]:
-                p["endpoint"] = lp["endpoint"]
-                p["last_ip"] = lp["endpoint"].split(":")[0]
-            if lp["ip"]:
-                p["ip"] = lp["ip"]
-            p["hs"] = lp["hs"]
-            p["rx"] = fmt_size(lp["rx"])
-            p["tx"] = fmt_size(lp["tx"])
-            p["total_bytes"] = (lp["rx"] + lp["tx"]) * 1073741824  # ГБ → байты
+            if lp.endpoint:
+                p["endpoint"] = lp.endpoint
+                p["last_ip"] = extract_endpoint_ip(lp.endpoint) or ""
+            if lp.allowed_ip:
+                p["ip"] = lp.allowed_ip
+            p["hs"] = fmt_hs(lp.latest_handshake)
+            p["rx"] = fmt_size(lp.rx_bytes)
+            p["tx"] = fmt_size(lp.tx_bytes)
+            p["total_bytes"] = lp.rx_bytes + lp.tx_bytes
             # Надежная проверка online:
             # handshake был и он был менее 300 секунд (5 мин) назад
             current_time = int(time.time())

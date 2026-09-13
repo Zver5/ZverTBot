@@ -4,7 +4,6 @@ import importlib.util
 import json
 import os
 import re
-import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -178,40 +177,37 @@ def parse_size(s):
 
 
 def get_awg_raw_stats():
-    res = {}
     try:
+        from services.awg.runtime import get_runtime_peers
+
+        runtime_peers = get_runtime_peers()
+
         if os.path.exists(AWG_REGISTRY):
             with open(AWG_REGISTRY) as registry_file:
-                reg = json.load(registry_file)
+                registry = json.load(registry_file)
         else:
-            reg = {}
-        out = subprocess.run(
-            ["awg", "show", "awg0"],
-            capture_output=True,
-            text=True,
-        ).stdout
-        lines = out.split("\n")
-        for name, data in reg.items():
+            registry = {}
+
+        by_ip = {
+            peer.allowed_ip: peer
+            for peer in runtime_peers.values()
+            if peer.allowed_ip
+        }
+
+        result = {}
+        for name, data in registry.items():
             ip = data.get("ip")
-            if not ip:
-                continue
-            rx = tx = 0
-            for i, line in enumerate(lines):
-                if ip in line and "allowed ips" in line:
-                    for j in range(i, min(i + 5, len(lines))):
-                        current_line = lines[j].strip()
-                        if "transfer:" in current_line:
-                            parts = current_line.split(":")[1].split(",")
-                            if len(parts) >= 2:
-                                rx = parse_size(parts[0].strip())
-                                tx = parse_size(
-                                    parts[1].strip().replace("sent", "").strip()
-                                )
-                    break
-            res[name] = {"up": rx, "down": tx}
+            peer = by_ip.get(ip)
+
+            result[name] = {
+                "up": peer.rx_bytes if peer else 0,
+                "down": peer.tx_bytes if peer else 0,
+            }
+
+        return result
     except Exception as e:
         log(f"AWG parse err: {e}")
-    return res
+        return {}
 
 
 def get_xray_last_ips():

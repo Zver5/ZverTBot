@@ -27,7 +27,6 @@ import ipaddress
 import json
 import logging
 import re
-import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -156,37 +155,21 @@ def extract_endpoint_ip(endpoint: str) -> str | None:
 
 def get_awg_peers() -> dict[str, str]:
     """Получает endpoint IP подключённых AWG peers."""
-    peers: dict[str, str] = {}
-
     try:
-        result = subprocess.run(
-            ["awg", "show", "awg0", "endpoints"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        from services.awg.runtime import extract_endpoint_ip, get_runtime_peers
 
-        for line in result.stdout.splitlines():
-            parts = line.split("\t", 1)
+        peers: dict[str, str] = {}
 
-            if len(parts) != 2:
-                continue
-
-            pubkey, endpoint = parts
-
-            ip = extract_endpoint_ip(endpoint)
+        for public_key, peer in get_runtime_peers().items():
+            ip = extract_endpoint_ip(peer.endpoint)
 
             if ip:
-                peers[pubkey] = ip
+                peers[public_key] = ip
 
-    except FileNotFoundError:
-        logger.warning("geoip.awg.command_not_found")
-    except subprocess.CalledProcessError as exc:
-        logger.error("geoip.awg.endpoints_command_failed | error=%s", exc)
+        return peers
     except Exception as exc:
-        logger.error("geoip.awg.endpoints_failed | error=%s", exc)
-
-    return peers
+        logger.error("geoip.awg.runtime_failed | error=%s", exc)
+        return {}
 
 
 # ------------------------------------------------------------------

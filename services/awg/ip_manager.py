@@ -3,8 +3,6 @@
 Диапазон: 10.66.66.8-99 (92 адреса).
 """
 
-import subprocess
-
 from data.storage import load_awg_registry
 from utils.logger import logger
 
@@ -24,21 +22,20 @@ def get_used_awg_ips() -> set:
     reg_ips = {v["ip"] for v in load_awg_registry().values() if "ip" in v}
 
     # Источник 2: Активные подключения
-    live_ips = set()
     try:
-        out = subprocess.run(
-            ["awg", "show", "awg0"], capture_output=True, text=True
-        ).stdout
-        for line in out.splitlines():
-            if "allowed ips:" in line:
-                ip = line.split(":")[1].strip().split("/")[0]
-                if ip.startswith("10.66.66."):
-                    live_ips.add(ip)
+        from services.awg.runtime import get_runtime_peers
+
+        live_ips = {
+            peer.allowed_ip
+            for peer in get_runtime_peers().values()
+            if peer.allowed_ip.startswith("10.66.66.")
+        }
     except Exception as e:
         logger.warning(
             "awg.runtime.list_peers_failed | error=%s",
             e,
         )
+        live_ips = set()
 
     # Объединяем оба источника
     return reg_ips | live_ips
