@@ -36,9 +36,9 @@ def test_get_services_status_detects_active_services():
     module = load_vps_stats()
 
     def fake_run(cmd, *args, **kwargs):
-        if cmd[:2] == ["systemctl", "list-unit-files"]:
+        if cmd[:2] == ["systemctl", "cat"]:
             service = cmd[2]
-            return Mock(stdout=f"{service}\n")
+            return Mock(returncode=0, stdout=f"{service}\n")
 
         if cmd[:2] == ["systemctl", "is-active"]:
             return Mock(stdout="active\n")
@@ -68,13 +68,13 @@ def test_get_services_status_marks_missing_service():
     module = load_vps_stats()
 
     def fake_run(cmd, *args, **kwargs):
-        if cmd[:2] == ["systemctl", "list-unit-files"]:
+        if cmd[:2] == ["systemctl", "cat"]:
             service = cmd[2]
 
-            if service == "xray.service":
-                return Mock(stdout="")
+            if service == "xray":
+                    return Mock(returncode=1, stdout="")
 
-            return Mock(stdout=f"{service}\n")
+            return Mock(returncode=0, stdout=f"{service}\n")
 
         if cmd[:2] == ["systemctl", "is-active"]:
             return Mock(stdout="active\n")
@@ -114,9 +114,9 @@ def test_get_services_status_marks_inactive_service():
     module = load_vps_stats()
 
     def fake_run(cmd, *args, **kwargs):
-        if cmd[:2] == ["systemctl", "list-unit-files"]:
+        if cmd[:2] == ["systemctl", "cat"]:
             service = cmd[2]
-            return Mock(stdout=f"{service}\n")
+            return Mock(returncode=0, stdout=f"{service}\n")
 
         if cmd[:2] == ["systemctl", "is-active"]:
             service = cmd[2]
@@ -330,8 +330,8 @@ def test_get_services_status_reports_uptime_for_active_service(monkeypatch):
     module = load_vps_stats()
 
     def fake_run(cmd, *args, **kwargs):
-        if cmd[:2] == ["systemctl", "list-unit-files"]:
-            return Mock(stdout=f"{cmd[2]}\n")
+        if cmd[:2] == ["systemctl", "cat"]:
+            return Mock(returncode=0, stdout=f"{cmd[2]}\n")
         if cmd[:2] == ["systemctl", "is-active"]:
             return Mock(stdout="active\n")
         if cmd[:2] == ["systemctl", "show"]:
@@ -354,8 +354,8 @@ def test_get_services_status_uptime_returns_minutes(monkeypatch):
     module = load_vps_stats()
 
     def fake_run(cmd, *args, **kwargs):
-        if cmd[:2] == ["systemctl", "list-unit-files"]:
-            return Mock(stdout=f"{cmd[2]}")
+        if cmd[:2] == ["systemctl", "cat"]:
+            return Mock(returncode=0, stdout=f"{cmd[2]}")
         if cmd[:2] == ["systemctl", "is-active"]:
             return Mock(stdout="active")
         if cmd[:2] == ["systemctl", "show"]:
@@ -396,8 +396,8 @@ def test_get_services_status_uptime_returns_none_for_zero_timestamp(monkeypatch)
     module = load_vps_stats()
 
     def fake_run(cmd, *args, **kwargs):
-        if cmd[:2] == ["systemctl", "list-unit-files"]:
-            return Mock(stdout=f"{cmd[2]}")
+        if cmd[:2] == ["systemctl", "cat"]:
+            return Mock(returncode=0, stdout=f"{cmd[2]}")
         if cmd[:2] == ["systemctl", "is-active"]:
             return Mock(stdout="active")
         if cmd[:2] == ["systemctl", "show"]:
@@ -418,8 +418,8 @@ def test_get_services_status_discovers_multiple_awg_units(monkeypatch):
     module = load_vps_stats()
 
     def fake_run(cmd, *args, **kwargs):
-        if cmd[:2] == ["systemctl", "list-unit-files"]:
-            return Mock(stdout=f"{cmd[2]}\n")
+        if cmd[:2] == ["systemctl", "cat"]:
+            return Mock(returncode=0, stdout=f"{cmd[2]}\n")
         if cmd[:2] == ["systemctl", "is-active"]:
             return Mock(stdout="active\n")
         if cmd[:2] == ["systemctl", "list-units"]:
@@ -452,7 +452,13 @@ PublicKey = key-alice
 AllowedIPs = 10.0.0.2/32
 """
 
-    monkeypatch.setattr(module, "AWG_CONF", Path("/tmp/awg-test.conf"))
+    from services.awg import config_manager
+
+    monkeypatch.setattr(
+        config_manager,
+        "AWG_CONF",
+        Path("/tmp/awg-test.conf"),
+    )
 
     import builtins
 
@@ -599,7 +605,9 @@ def test_collect_deduplicates_xray_client_by_uuid(monkeypatch):
 
     module = load_vps_stats()
     real_open = builtins.open
-    xray_path = module.XRAY_CONF
+    from services.xray import config_manager
+
+    xray_path = config_manager.XRAY_CONF
 
     cfg = {
         "inbounds": [
@@ -749,10 +757,12 @@ def test_collect_logs_awg_handshake_command_error(monkeypatch, caplog):
     import logging
     import subprocess
 
+    real_run = subprocess.run
+
     def fail_awg(cmd, *args, **kwargs):
         if cmd[:3] == ["awg", "show", "awg0"]:
             raise RuntimeError("awg failed")
-        return subprocess.run(cmd, *args, **kwargs)
+        return real_run(cmd, *args, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", fail_awg)
 
@@ -763,7 +773,7 @@ def test_collect_logs_awg_handshake_command_error(monkeypatch, caplog):
         module.collect_stats()
 
     assert module.hs_times == {}
-    assert "vps_stats.awg.handshake_check_failed" in caplog.text
+    assert "vps_stats.awg_runtime.load_failed" in caplog.text
     assert "awg failed" in caplog.text
 
 
@@ -772,7 +782,9 @@ def test_collect_logs_xray_config_error(monkeypatch, caplog):
     import logging
 
     real_open = builtins.open
-    xray_path = load_vps_stats().XRAY_CONF
+    from services.xray import config_manager
+
+    xray_path = config_manager.XRAY_CONF
 
     def fake_open(path, *args, **kwargs):
         if Path(path) == xray_path:

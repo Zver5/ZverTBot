@@ -24,10 +24,8 @@ def service_exists(service: str) -> bool:
         return False
 
 
-def service_is_active(service: str) -> bool:
-    """
-    Проверяет, находится ли systemd unit в состоянии active.
-    """
+def get_service_state(service: str) -> str:
+    """Возвращает текущее состояние systemd unit."""
     try:
         result = subprocess.run(
             ["systemctl", "is-active", service],
@@ -35,9 +33,62 @@ def service_is_active(service: str) -> bool:
             text=True,
             timeout=5,
         )
-        return result.returncode == 0 and result.stdout.strip() == "active"
+        return result.stdout.strip() or "unknown"
     except Exception:
-        return False
+        return "unknown"
+
+
+def service_is_active(service: str) -> bool:
+    """
+    Проверяет, находится ли systemd unit в состоянии active.
+    """
+    return get_service_state(service) == "active"
+
+
+def list_service_units() -> list[str]:
+    """Возвращает имена всех systemd service units."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "list-units", "--type=service", "--all", "--no-legend"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return []
+
+    units = []
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if fields:
+            units.append(fields[0].removesuffix(".service"))
+    return units
+
+
+def get_service_uptime_seconds(service: str) -> int | None:
+    """Возвращает время работы active systemd unit в секундах."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "show", service, "-p", "ActiveEnterTimestampMonotonic"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        value = result.stdout.strip().partition("=")[2]
+        if not value.isdigit() or int(value) <= 0:
+            return None
+
+        uptime = subprocess.run(
+            ["cat", "/proc/uptime"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout.split()[0]
+
+        now = int(float(uptime))
+        return max(0, now - int(value) // 1_000_000)
+    except Exception:
+        return None
 
 
 def restart_service_detached(service: str) -> None:

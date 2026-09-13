@@ -18,6 +18,12 @@ from config.secrets import HA_TUNNEL_IP as SOCKS5_IP  # noqa: E402
 from services.awg.config_manager import get_awg_peers
 from services.xray.config_manager import get_all_clients, load_xray_config
 from utils.atomic import atomic_write  # noqa: E402
+from utils.service_control import (
+    get_service_state,
+    get_service_uptime_seconds,
+    list_service_units,
+    service_exists,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,137 +66,51 @@ def load_geoip_data():
 
 # === НОВАЯ ФУНКЦИЯ: статус systemd-сервисов ===
 def get_services_status():
-    """
-    Автоматическое определение systemd сервисов.
-
-    Возвращает:
-    {
-        "service": {
-            "status": 1,
-            "uptime": "15д 23ч",
-        }
-    }
-
-    status:
-    1  = работает
-    0  = установлен, но остановлен
-    -1 = не установлен
-    """
-
+    """Возвращает статус основных и обнаруженных AWG systemd-сервисов."""
     status = {}
 
-    def get_service_uptime(service):
-        """Вернуть краткое время работы active systemd-сервиса."""
-        try:
-            result = subprocess.run(
-                ["systemctl", "show", service, "-p", "ActiveEnterTimestampMonotonic"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-
-            value = result.stdout.strip().partition("=")[2]
-
-            if not value.isdigit() or int(value) <= 0:
-                return None
-
-            now = int(
-                subprocess.run(
-                    ["cat", "/proc/uptime"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                .stdout.split()[0]
-                .split(".")[0]
-            )
-
-            active_seconds = max(0, now - int(value) // 1_000_000)
-
-            days, remainder = divmod(active_seconds, 86400)
-            hours, remainder = divmod(remainder, 3600)
-            minutes, _ = divmod(remainder, 60)
-
-            if days:
-                return f"{days}д {hours}ч"
-
-            if hours:
-                return f"{hours}ч {minutes}м"
-
-            return f"{minutes}м"
-
-        except Exception:
+    def format_uptime(seconds):
+        if seconds is None:
             return None
 
-    # обычные сервисы
-    services = ["xray", "stats-http", "zvertbot", "fail2ban"]
+        days, remainder = divmod(seconds, 86400)
+        hours, remainder = divmod(remainder, 3600)
+        minutes, _ = divmod(remainder, 60)
 
-    for svc in services:
-        try:
-            exists = subprocess.run(
-                ["systemctl", "list-unit-files", svc + ".service"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
+        if days:
+            return f"{days}д {hours}ч"
+        if hours:
+            return f"{hours}ч {minutes}м"
+        return f"{minutes}м"
 
-            if svc + ".service" not in exists.stdout:
-                status[svc] = {"status": -1, "uptime": None}
-                continue
+    def build_status(service, *, known_exists=False):
+        if not known_exists and not service_exists(service):
+            return {"status": -1, "uptime": None}
 
-            active = subprocess.run(
-                ["systemctl", "is-active", svc],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
+        state = get_service_state(service)
+        is_active = state == "active"
 
-            is_active = active.stdout.strip() == "active"
-            status[svc] = {
-                "status": 1 if is_active else 0,
-                "uptime": get_service_uptime(svc) if is_active else None,
-            }
+        return {
+            "status": 1 if is_active else 0,
+            "uptime": (
+                format_uptime(get_service_uptime_seconds(service))
+                if is_active
+                else None
+            ),
+        }
 
-        except Exception:
-            status[svc] = {"status": -1, "uptime": None}
+    for service in ["xray", "stats-http", "zvertbot", "fail2ban"]:
+        status[service] = build_status(service)
 
-    # ========================================================
-    # AmneziaWG - поиск реально существующих экземпляров
-    # ========================================================
+    awg_units = [
+        unit for unit in list_service_units()
+        if "awg-quick@" in unit
+    ]
 
-    try:
-        units = subprocess.run(
-            ["systemctl", "list-units", "--type=service", "--all", "--no-legend"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
+    for unit in awg_units:
+        status[unit] = build_status(unit, known_exists=True)
 
-        awg_found = []
-
-        for line in units.stdout.splitlines():
-            if "awg-quick@" in line:
-                name = line.split()[0].replace(".service", "")
-                awg_found.append(name)
-
-        for awg in awg_found:
-            active = subprocess.run(
-                ["systemctl", "is-active", awg],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-
-            is_active = active.stdout.strip() == "active"
-            status[awg] = {
-                "status": 1 if is_active else 0,
-                "uptime": get_service_uptime(awg) if is_active else None,
-            }
-
-        if not awg_found:
-            status["awg-quick@awg0"] = {"status": -1, "uptime": None}
-
-    except Exception:
+    if not awg_units:
         status["awg-quick@awg0"] = {"status": -1, "uptime": None}
 
     return status
@@ -303,11 +223,15 @@ def collect_stats():
 
     from services.awg.runtime import extract_endpoint_ip, get_runtime_peers
 
-    live_peers = get_runtime_peers()
+    try:
+        live_peers = get_runtime_peers()
+    except Exception as exc:
+        logger.warning("vps_stats.awg_runtime.load_failed | error=%s", exc)
+        live_peers = {}
 
     from services.awg.runtime import get_latest_handshakes
 
-    hs_times = get_latest_handshakes()
+    hs_times = get_latest_handshakes() if live_peers else {}
 
     wg_peers = []
     for c in config_peers:

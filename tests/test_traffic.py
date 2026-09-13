@@ -393,7 +393,9 @@ def test_collect_deduplicates_xray_client_across_inbounds(monkeypatch, tmp_path)
     )
 
     monkeypatch.setattr(module, "OUT", str(usage_file))
-    monkeypatch.setattr(module, "XRAY_CONF", config_file)
+    monkeypatch.setattr(
+        module, "load_xray_config", lambda: json.loads(config_file.read_text())
+    )
     monkeypatch.setattr(module, "AWG_USERS_JSON", tmp_path / "awg.json")
 
     calls = []

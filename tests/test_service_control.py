@@ -7,6 +7,9 @@ from unittest.mock import Mock, patch
 import pytest
 
 from utils.service_control import (
+    get_service_state,
+    get_service_uptime_seconds,
+    list_service_units,
     restart_service,
     restart_service_detached,
     service_exists,
@@ -77,6 +80,107 @@ def test_service_is_active_when_exception(mock_run):
     mock_run.side_effect = Exception("systemctl error")
 
     assert service_is_active("xray") is False
+
+
+@patch("utils.service_control.subprocess.run")
+def test_get_service_state_returns_active(mock_run):
+    mock_run.return_value = Mock(returncode=0, stdout="active\n")
+
+    assert get_service_state("xray") == "active"
+
+    mock_run.assert_called_once_with(
+        ["systemctl", "is-active", "xray"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+
+@patch("utils.service_control.subprocess.run")
+def test_get_service_state_returns_unknown_when_output_is_empty(mock_run):
+    mock_run.return_value = Mock(returncode=3, stdout="")
+
+    assert get_service_state("xray") == "unknown"
+
+
+@patch("utils.service_control.subprocess.run")
+def test_get_service_state_returns_unknown_on_exception(mock_run):
+    mock_run.side_effect = Exception("systemctl error")
+
+    assert get_service_state("xray") == "unknown"
+
+
+@patch("utils.service_control.get_service_state")
+def test_service_is_active_uses_service_state(mock_state):
+    mock_state.return_value = "active"
+
+    assert service_is_active("xray") is True
+
+    mock_state.assert_called_once_with("xray")
+
+
+@patch("utils.service_control.get_service_state")
+def test_service_is_active_is_false_for_other_states(mock_state):
+    mock_state.return_value = "failed"
+
+    assert service_is_active("xray") is False
+
+
+@patch("utils.service_control.subprocess.run")
+def test_list_service_units_returns_service_names(mock_run):
+    mock_run.return_value = Mock(
+        stdout=(
+            "xray.service loaded active running Xray\n"
+            "stats-http.service loaded active running Stats\n"
+            "zvertbot.service loaded inactive dead Bot\n"
+        )
+    )
+
+    assert list_service_units() == ["xray", "stats-http", "zvertbot"]
+
+    mock_run.assert_called_once_with(
+        [
+            "systemctl",
+            "list-units",
+            "--type=service",
+            "--all",
+            "--no-legend",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+
+@patch("utils.service_control.subprocess.run")
+def test_list_service_units_returns_empty_on_exception(mock_run):
+    mock_run.side_effect = Exception("systemctl error")
+
+    assert list_service_units() == []
+
+
+@patch("utils.service_control.subprocess.run")
+def test_get_service_uptime_seconds(mock_run):
+    mock_run.side_effect = [
+        Mock(stdout="ActiveEnterTimestampMonotonic=120000000\n"),
+        Mock(stdout="125.5 0.0\n"),
+    ]
+
+    assert get_service_uptime_seconds("xray") == 5
+
+
+@patch("utils.service_control.subprocess.run")
+def test_get_service_uptime_seconds_returns_none_for_invalid_timestamp(mock_run):
+    mock_run.return_value = Mock(stdout="ActiveEnterTimestampMonotonic=\n")
+
+    assert get_service_uptime_seconds("xray") is None
+
+
+@patch("utils.service_control.subprocess.run")
+def test_get_service_uptime_seconds_returns_none_on_exception(mock_run):
+    mock_run.side_effect = Exception("systemctl error")
+
+    assert get_service_uptime_seconds("xray") is None
 
 
 @patch("utils.service_control.subprocess.Popen")

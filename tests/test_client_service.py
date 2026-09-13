@@ -369,15 +369,19 @@ def test_send_qr_or_conf_vless_multiple_links():
     bot.send_message.assert_called_once()
 
 
+def _fake_qr_open(path, mode="r", *args, **kwargs):
+    if "qr_" in str(path) and "b" in mode:
+        from io import BytesIO
+
+        return BytesIO(b"fake_image")
+    return open(path, mode, *args, **kwargs)
+
+
 def test_send_qr_or_conf_awg_success():
     bot = Mock()
+    monkeypatch = __import__("pytest").MonkeyPatch()
+    monkeypatch.setattr(cs, "get_awg_listen_port", lambda: "58352")
 
-    def fake_open(path, mode="r", *args, **kwargs):
-        if path == cs.AWG_CONF:
-            return mock_open(
-                read_data="[Interface]\\nListenPort = 58352\\n"
-            ).return_value
-        return mock_open(read_data=b"qr").return_value
 
     with (
         patch("services.client_service.awg_get_config", return_value="awg-config"),
@@ -386,7 +390,7 @@ def test_send_qr_or_conf_awg_success():
             return_value={"client1": {"ip": "10.66.66.10"}},
         ),
         patch("services.client_service.subprocess.run"),
-        patch("services.client_service.open", side_effect=fake_open),
+        patch("services.client_service.open", side_effect=_fake_qr_open),
         patch("services.client_service.os.path.exists", return_value=False),
     ):
         cs.send_qr_or_conf(bot, 100, "client1", "awg")
@@ -834,11 +838,8 @@ def test_send_qr_or_conf_vless_config_only_urlsplit_exception(monkeypatch):
 
 def test_send_qr_or_conf_awg_oserror(monkeypatch):
     bot = Mock()
+    monkeypatch.setattr(cs, "get_awg_listen_port", lambda: "N/A")
 
-    def fake_open(path, mode="r", *args, **kwargs):
-        if path == cs.AWG_CONF:
-            raise OSError("No such file")
-        return mock_open(read_data=b"qr").return_value
 
     monkeypatch.setattr(cs, "awg_get_config", lambda u: "awg-config")
     monkeypatch.setattr(
@@ -847,7 +848,7 @@ def test_send_qr_or_conf_awg_oserror(monkeypatch):
     monkeypatch.setattr(cs.subprocess, "run", lambda *a, **kw: None)
     monkeypatch.setattr(cs.os.path, "exists", lambda p: False)
 
-    with patch("builtins.open", side_effect=fake_open):
+    with patch("builtins.open", side_effect=_fake_qr_open):
         cs.send_qr_or_conf(bot, 100, "client1", "awg")
 
     bot.send_photo.assert_called_once()
@@ -979,11 +980,8 @@ def test_send_qr_or_conf_vless_config_only_ports(monkeypatch):
 
 def test_send_qr_or_conf_awg_listen_port_success(monkeypatch):
     bot = Mock()
+    monkeypatch.setattr(cs, "get_awg_listen_port", lambda: "12345")
 
-    def fake_open(path, mode="r", *args, **kwargs):
-        if path == cs.AWG_CONF:
-            return mock_open(read_data="ListenPort=12345\n").return_value
-        return mock_open(read_data=b"qr").return_value
 
     monkeypatch.setattr(cs, "awg_get_config", lambda u: "awg-config")
     monkeypatch.setattr(
@@ -992,7 +990,7 @@ def test_send_qr_or_conf_awg_listen_port_success(monkeypatch):
     monkeypatch.setattr(cs.subprocess, "run", lambda *a, **kw: None)
     monkeypatch.setattr(cs.os.path, "exists", lambda p: False)
 
-    with patch("builtins.open", side_effect=fake_open):
+    with patch("builtins.open", side_effect=_fake_qr_open):
         cs.send_qr_or_conf(bot, 100, "client1", "awg")
 
     call_args = bot.send_photo.call_args
@@ -1031,25 +1029,13 @@ def test_send_qr_or_conf_vless_qr_third_port(monkeypatch):
 
 def test_send_qr_or_conf_awg_document_not_found(monkeypatch):
     bot = Mock()
+    monkeypatch.setattr(cs, "get_awg_listen_port", lambda: "N/A")
 
     monkeypatch.setattr(cs, "awg_get_config", Mock(side_effect=["awg-config", None]))
     monkeypatch.setattr(
         cs, "load_awg_registry", lambda: {"client1": {"ip": "10.66.66.10"}}
     )
     monkeypatch.setattr(cs.subprocess, "run", lambda *a, **kw: None)
-
-    original_open = open
-
-    def fake_open(path, *args, **kwargs):
-        if path == cs.AWG_CONF:
-            raise OSError("No such file")
-        if "qr_" in path and "rb" in args:
-            from io import BytesIO
-
-            return BytesIO(b"fake_image")
-        return original_open(path, *args, **kwargs)
-
-    monkeypatch.setattr("builtins.open", fake_open)
 
     import pytest
 
