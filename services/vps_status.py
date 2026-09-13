@@ -167,12 +167,6 @@ def _public_connections(value: Any) -> list[dict[str, Any]]:
             "hs",
         )
 
-        result.append(
-            {
-                key: connection[key]
-                for key in allowed
-                if key in connection
-            }
-        )
+        result.append({key: connection[key] for key in allowed if key in connection})
 
     return result

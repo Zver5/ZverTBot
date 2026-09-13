@@ -163,8 +163,7 @@ def setup_logger():
 logger = setup_logger()
 
 logger.info(
-    "logger.initialized | app=%s | version=%s | log_file=%s | "
-    "rotation=10MBx4",
+    "logger.initialized | app=%s | version=%s | log_file=%s | rotation=10MBx4",
     BOT_NAME,
     BOT_VERSION,
     LOG_FILE,

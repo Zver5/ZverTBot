@@ -53,7 +53,6 @@ def test_load_invalid_json_logs_standardized_error(tmp_path, monkeypatch):
     assert isinstance(logger_calls[0][1], json.JSONDecodeError)
 
 
-
 def test_save_creates_parent_and_writes_json(tmp_path, monkeypatch):
     tokens_file = tmp_path / "nested" / "tokens.json"
     monkeypatch.setattr(ip_tokens, "TOKENS_FILE", tokens_file)

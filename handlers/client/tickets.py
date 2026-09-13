@@ -204,8 +204,7 @@ def handle_ticket_reply_cancel(bot, cid, call, data):
                 )
             except Exception as e:
                 logger.warning(
-                    "ticket.reply.cancel_message_update_failed | "
-                    "chat_id=%s | error=%s",
+                    "ticket.reply.cancel_message_update_failed | chat_id=%s | error=%s",
                     cid,
                     e,
                 )

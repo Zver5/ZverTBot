@@ -725,10 +725,7 @@ def test_collect_reads_usage_json_twice(monkeypatch):
 
     real_open = builtins.open
     usage_path = (
-        load_vps_stats.__globals__["PROJECT_ROOT"]
-        / "hass"
-        / "traffic"
-        / "usage.json"
+        load_vps_stats.__globals__["PROJECT_ROOT"] / "hass" / "traffic" / "usage.json"
     )
     calls = 0
 

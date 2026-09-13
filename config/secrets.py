@@ -38,8 +38,6 @@ HASS_FLAG = os.getenv("HASS_FLAG", "🌍")
 # AmneziaWG
 
 
-
-
 # LLM API for log diagnostics
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "").strip().lower()
 LLM_API_KEY = os.getenv("LLM_API_KEY", "").strip()

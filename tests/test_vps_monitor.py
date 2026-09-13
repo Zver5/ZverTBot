@@ -175,9 +175,7 @@ def test_stats_http_checks_http_endpoint(mock_systemctl):
 
     assert result.healthy is True
     assert result.details == "HTTP 200"
-    mock_http.assert_called_once_with(
-        "http://127.0.0.1:8080/vps-status.json"
-    )
+    mock_http.assert_called_once_with("http://127.0.0.1:8080/vps-status.json")
 
 
 @patch("services.vps_monitor._systemctl")
@@ -240,10 +238,7 @@ def test_awg_active_and_interface_is_healthy(mock_systemctl):
 
     with patch(
         "services.vps_monitor.subprocess.run",
-        return_value=completed(
-            "interface: awg0\n"
-            "  listening port: 58352\n"
-        ),
+        return_value=completed("interface: awg0\n  listening port: 58352\n"),
     ):
         result = check_awg_service()
 
@@ -274,9 +269,7 @@ def test_backup_success_and_fresh_is_healthy(tmp_path):
         json.dumps(
             {
                 "status": "success",
-                "last_backup": datetime.now(
-                    timezone.utc
-                ).isoformat(),
+                "last_backup": datetime.now(timezone.utc).isoformat(),
             }
         ),
         encoding="utf-8",
@@ -298,9 +291,7 @@ def test_backup_failed_status_is_down(tmp_path):
         json.dumps(
             {
                 "status": "local_only",
-                "last_backup": datetime.now(
-                    timezone.utc
-                ).isoformat(),
+                "last_backup": datetime.now(timezone.utc).isoformat(),
             }
         ),
         encoding="utf-8",

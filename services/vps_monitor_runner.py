@@ -69,7 +69,7 @@ def _format_backup_age(details: str) -> str:
         return ""
 
     try:
-        seconds = int(details[len(marker):-len(" seconds old")])
+        seconds = int(details[len(marker) : -len(" seconds old")])
     except ValueError:
         return ""
 
@@ -91,9 +91,7 @@ def _format_update(
         update.name,
         ("⚙️", update.name),
     )
-    timestamp = datetime.now(ZoneInfo("Europe/Moscow")).strftime(
-        "%Y-%m-%d %H:%M MSK"
-    )
+    timestamp = datetime.now(ZoneInfo("Europe/Moscow")).strftime("%Y-%m-%d %H:%M MSK")
 
     if update.current == MonitorState.UP:
         if update.name == "backup":
@@ -101,11 +99,7 @@ def _format_update(
         else:
             status = "🟢 Работа восстановлена"
 
-        return (
-            f"{icon} <b>Сервис: {name}</b>\n"
-            f"{status}\n"
-            f"⏱️ {timestamp}"
-        )
+        return f"{icon} <b>Сервис: {name}</b>\n{status}\n⏱️ {timestamp}"
 
     details = update.details
 
@@ -171,9 +165,7 @@ def notify_updates(
     chats = _admin_chats()
 
     if not chats:
-        raise RuntimeError(
-            "Neither ADMIN_CHATS nor ADMIN_CHAT is configured"
-        )
+        raise RuntimeError("Neither ADMIN_CHATS nor ADMIN_CHAT is configured")
 
     for update in updates:
         if not update.notify:
@@ -195,18 +187,12 @@ def run_once() -> None:
     """Run one complete monitoring cycle."""
     results = check_all()
 
-    categories = {
-        result.name: result.category
-        for result in results
-    }
+    categories = {result.name: result.category for result in results}
 
     updates, states = prepare_results(results)
 
     for update in updates:
-        if (
-            update.previous is not None
-            and update.current != update.previous
-        ):
+        if update.previous is not None and update.current != update.previous:
             logger.info(
                 "vps_monitor.state_changed | service=%s | %s -> %s | details=%s",
                 update.name,

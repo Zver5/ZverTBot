@@ -51,10 +51,7 @@ def save_states(
     """Persist monitor states atomically."""
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    payload = {
-        name: state.value
-        for name, state in sorted(states.items())
-    }
+    payload = {name: state.value for name, state in sorted(states.items())}
 
     with tempfile.NamedTemporaryFile(
         mode="w",
@@ -76,11 +73,7 @@ def update_state(
     states: dict[str, MonitorState],
 ) -> StateUpdate:
     """Apply one monitor result and determine whether to notify."""
-    current = (
-        MonitorState.UP
-        if result.healthy
-        else MonitorState.DOWN
-    )
+    current = MonitorState.UP if result.healthy else MonitorState.DOWN
 
     previous = states.get(result.name)
 
@@ -109,10 +102,7 @@ def prepare_results(
     """Process results without persisting state."""
     states = load_states(path)
 
-    updates = [
-        update_state(result, states)
-        for result in results
-    ]
+    updates = [update_state(result, states) for result in results]
 
     return updates, states
 

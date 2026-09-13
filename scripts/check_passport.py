@@ -591,9 +591,7 @@ print_port_table(
 
 local_services = []
 
-for service_name, pattern in (
-    ("stats-http", "stats-http"),
-):
+for service_name, pattern in (("stats-http", "stats-http"),):
     port = discover_tcp_port(pattern)
     if port:
         local_services.append(
@@ -839,9 +837,7 @@ if vps_status:
         "updated_at",
     )
 
-    missing_fields = [
-        key for key in required_fields if key not in vps_status
-    ]
+    missing_fields = [key for key in required_fields if key not in vps_status]
 
     if missing_fields:
         warn(
@@ -885,20 +881,14 @@ if vps_status:
             )
 
             if age < 0:
-                warn(
-                    "Статистика свежести       "
-                    f"TIMESTAMP ИЗ БУДУЩЕГО ({age}s)"
-                )
+                warn(f"Статистика свежести       TIMESTAMP ИЗ БУДУЩЕГО ({age}s)")
             elif age <= 300:
                 ok(f"Статистика свежести       СВЕЖАЯ ({age}s)")
             else:
                 warn(f"Статистика свежести       УСТАРЕЛА ({age}s)")
 
         except ValueError:
-            warn(
-                "Статистика свежести       "
-                f"НЕКОРРЕКТНЫЙ TIMESTAMP ({updated_at})"
-            )
+            warn(f"Статистика свежести       НЕКОРРЕКТНЫЙ TIMESTAMP ({updated_at})")
 
 
 section("📁 ФАЙЛЫ ДАННЫХ HASS")

@@ -142,9 +142,7 @@ def test_awg_get_config_unexpected_exception(monkeypatch):
 def test_get_awg_server_params_missing_required_param(monkeypatch, tmp_path):
     awg_conf = tmp_path / "awg0.conf"
     awg_conf.write_text(
-        "[Interface]\n"
-        "PrivateKey = SERVER_PRIVATE_KEY\n"
-        "Jc = 8\n",
+        "[Interface]\nPrivateKey = SERVER_PRIVATE_KEY\nJc = 8\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(cg, "AWG_CONF", awg_conf)

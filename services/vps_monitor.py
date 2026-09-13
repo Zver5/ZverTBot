@@ -60,13 +60,9 @@ class StateTransition:
 
 CRITICAL_COMPONENTS = frozenset({"zvertbot", "stats-http"})
 
-OPTIONAL_COMPONENTS = frozenset(
-    {"backup", "xray", "awg", "ssh", "fail2ban"}
-)
+OPTIONAL_COMPONENTS = frozenset({"backup", "xray", "awg", "ssh", "fail2ban"})
 
-DATA_COLLECTORS = frozenset(
-    {"xray-traffic-collect", "geoip-collect"}
-)
+DATA_COLLECTORS = frozenset({"xray-traffic-collect", "geoip-collect"})
 
 
 def transition_state(
@@ -180,9 +176,7 @@ def check_stats_http() -> MonitorResult:
     if not service.healthy:
         return service
 
-    healthy, details = _http_check(
-        "http://127.0.0.1:8080/vps-status.json"
-    )
+    healthy, details = _http_check("http://127.0.0.1:8080/vps-status.json")
 
     return MonitorResult(
         name="stats-http",
@@ -296,9 +290,7 @@ def _parse_timestamp(value: str) -> datetime | None:
         return None
 
     try:
-        return datetime.fromisoformat(
-            value.replace("Z", "+00:00")
-        )
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
 
@@ -324,14 +316,11 @@ def check_backup(
             name="backup",
             category=MonitorCategory.OPTIONAL,
             healthy=False,
-            details=f"last backup status: "
-            f"{status.get('status', 'unknown')}",
+            details=f"last backup status: {status.get('status', 'unknown')}",
             failure=MonitorFailure.BACKUP_FAILED,
         )
 
-    completed_at = _parse_timestamp(
-        str(status.get("last_backup", ""))
-    )
+    completed_at = _parse_timestamp(str(status.get("last_backup", "")))
     if completed_at is None:
         return MonitorResult(
             name="backup",
@@ -342,8 +331,7 @@ def check_backup(
         )
 
     age = (
-        datetime.now(timezone.utc)
-        - completed_at.astimezone(timezone.utc)
+        datetime.now(timezone.utc) - completed_at.astimezone(timezone.utc)
     ).total_seconds()
 
     if age < 0:

@@ -226,7 +226,6 @@ Jail list: sshd
     assert "уже не заблокирован" in msg
 
 
-
 @patch("services.fail2ban.subprocess.run")
 def test_unban_exception(mock_run):
     mock_run.side_effect = Exception("boom")
@@ -294,8 +293,7 @@ Status for jail: sshd
 
     assert "sshd" in text
     mock_warning.assert_called_once_with(
-        "fail2ban.status.invalid_banned_count | "
-        "field=currently_banned | value=%s",
+        "fail2ban.status.invalid_banned_count | field=currently_banned | value=%s",
         "invalid",
     )
 
@@ -327,7 +325,6 @@ Status for jail: sshd
 
     assert "sshd" in text
     mock_warning.assert_called_once_with(
-        "fail2ban.status.invalid_banned_count | "
-        "field=total_banned | value=%s",
+        "fail2ban.status.invalid_banned_count | field=total_banned | value=%s",
         "invalid",
     )

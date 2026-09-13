@@ -389,7 +389,8 @@ class TestHandleBindingsPart3Callback:
     def test_unbind_confirm_success_returns_response_and_sends_notification(
         self, mock_bot, mock_call
     ):
-        """Тест: успешная отвязка возвращает CallbackResponse и уведомляет пользователя.
+        """Тест: успешная отвязка возвращает CallbackResponse и уведомляет
+        пользователя.
         """
         with (
             patch(

@@ -169,8 +169,6 @@ def test_rename_client_aborts_when_critical_storage_load_fails(
     assert errors == [f"{expected_prefix}: {error_text}"]
 
 
-
-
 # ==========================================================
 def test_show_history_action_edits_existing_screen(monkeypatch):
     """При mid история редактирует текущий экран, а не создаёт дубликат."""
@@ -1147,7 +1145,8 @@ def test_rename_client_logs_completed_event(monkeypatch):
         call
         for call in mock_info.call_args_list
         if call.args
-        and call.args[0] == (
+        and call.args[0]
+        == (
             "client.rename.completed | old_name=%s | new_name=%s | "
             "success=%s | errors=%s"
         )
@@ -1155,8 +1154,7 @@ def test_rename_client_logs_completed_event(monkeypatch):
 
     assert len(completed_calls) == 1
     assert completed_calls[0].args == (
-        "client.rename.completed | old_name=%s | new_name=%s | "
-        "success=%s | errors=%s",
+        "client.rename.completed | old_name=%s | new_name=%s | success=%s | errors=%s",
         "old",
         "new",
         True,
@@ -1181,7 +1179,8 @@ def test_rename_client_logs_completed_failure_event(monkeypatch):
         call
         for call in mock_info.call_args_list
         if call.args
-        and call.args[0] == (
+        and call.args[0]
+        == (
             "client.rename.completed | old_name=%s | new_name=%s | "
             "success=%s | errors=%s"
         )
@@ -1189,8 +1188,7 @@ def test_rename_client_logs_completed_failure_event(monkeypatch):
 
     assert len(completed_calls) == 1
     assert completed_calls[0].args == (
-        "client.rename.completed | old_name=%s | new_name=%s | "
-        "success=%s | errors=%s",
+        "client.rename.completed | old_name=%s | new_name=%s | success=%s | errors=%s",
         "old",
         "new",
         False,

@@ -172,9 +172,7 @@ def test_do_get_without_token_and_admin_chat_id_returns_400():
     ) as mock_warning:
         request.do_GET()
 
-    mock_warning.assert_called_once_with(
-        "ip_server.request.missing_token"
-    )
+    mock_warning.assert_called_once_with("ip_server.request.missing_token")
     request.send_response.assert_called_once_with(400)
     request.end_headers.assert_called_once()
     request.wfile.write.assert_called_once_with(b"Missing token")

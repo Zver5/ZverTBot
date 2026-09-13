@@ -170,9 +170,7 @@ def remove_peer_from_config(pub: str) -> bool:
 
         logger.info(
             "awg.config.peer_removed | lines=%s",
-
             len(removed_lines),
-
         )
         return True
 
@@ -222,11 +220,8 @@ def rename_peer_in_config(old_name: str, new_name: str) -> bool:
 
         logger.info(
             "awg.config.peer_renamed | old_username=%s | new_username=%s",
-
             old_name,
-
             new_name,
-
         )
         return True
 

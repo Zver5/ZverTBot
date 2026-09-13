@@ -189,9 +189,9 @@ def test_build_status_process_count_error_logs_standardized_event(
         st.get_status_text()
 
     calls = [
-        call for call in mock_exception.call_args_list
-        if call.args
-        and call.args[0] == "stats.status.process_count_failed | error=%s"
+        call
+        for call in mock_exception.call_args_list
+        if call.args and call.args[0] == "stats.status.process_count_failed | error=%s"
     ]
     assert len(calls) == 1
     assert isinstance(calls[0].args[1], OSError)
@@ -243,6 +243,7 @@ def test_get_client_stats_text_logs_standardized_awg_error(monkeypatch):
         "user",
         error,
     )
+
 
 def test_build_status_swap_error_logs_standardized_event(
     monkeypatch,

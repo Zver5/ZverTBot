@@ -124,9 +124,11 @@ def test_save_json_logs_cleanup_error(tmp_path, monkeypatch):
 
     monkeypatch.setattr(storage.tempfile, "mkstemp", fail_mkstemp)
     monkeypatch.setattr(storage.os, "replace", fail_replace)
-    monkeypatch.setattr(storage.os, "remove", lambda path: (_ for _ in ()).throw(
-        OSError("cleanup failed")
-    ))
+    monkeypatch.setattr(
+        storage.os,
+        "remove",
+        lambda path: (_ for _ in ()).throw(OSError("cleanup failed")),
+    )
 
     with pytest.raises(OSError, match="replace failed"):
         storage._save_json(str(test_file), {"value": 1})

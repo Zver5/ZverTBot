@@ -39,7 +39,7 @@ def test_required_optional_templates():
     optional = BOTINSTALLER / "systemd" / "optional"
 
     required = [
-                "xray-traffic.service",
+        "xray-traffic.service",
         "xray-traffic.timer",
         "zvertbot-backup.service",
         "zvertbot-backup.timer",
