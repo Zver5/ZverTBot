@@ -36,10 +36,11 @@ class TestBuildClientCard:
 
         result = messages.build_client_card("TestUser", "vless")
 
-        assert "itunes.apple.com" in result
-        assert "speed.cloudflare.com" in result
-        assert "31.77.218.240:443" in result
-        assert "31.77.218.240:2096" in result
+        lines = result.splitlines()
+        assert "🔹 SNI: `itunes.apple.com`" in lines
+        assert "🔹 SNI: `speed.cloudflare.com`" in lines
+        assert f"🌐 *Сервер 1:* `{messages.SERVER_IP}:443`" in lines
+        assert f"🌐 *Сервер 2:* `{messages.SERVER_IP}:2096`" in lines
 
     def test_vless_uses_actual_xray_port(self, monkeypatch):
         """Тест: VLESS карточка показывает порт из Xray-конфига."""
@@ -53,10 +54,12 @@ class TestBuildClientCard:
 
         result = messages.build_client_card("TestUser", "vless")
 
-        assert "31.77.218.240:2053" in result
-        assert "itunes.apple.com" in result
-        assert "443" not in result
-        assert "2096" not in result
+        lines = result.splitlines()
+        assert f"🌐 *Сервер 1:* `{messages.SERVER_IP}:2053`" in lines
+        assert "🔹 SNI: `itunes.apple.com`" in lines
+        server_lines = [line for line in lines if line.startswith("🌐 *Сервер ")]
+        assert all(":443`" not in line for line in server_lines)
+        assert all(":2096`" not in line for line in server_lines)
 
     def test_vless_contains_username(self):
         """Тест: VLESS карточка содержит имя клиента"""

@@ -64,7 +64,7 @@ def test_speedtest_success(mock_run, mock_which):
     assert "15.2 ms" in text
     assert "250.11 Mbit/s" in text
     assert "100.55 Mbit/s" in text
-    assert "speedtest.example.com" in text
+    assert "📡 Сервер: `speedtest.example.com (Moscow, Russia)`" in text.splitlines()
 
 
 @patch("services.system.shutil.which")
