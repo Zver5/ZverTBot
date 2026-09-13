@@ -31,6 +31,7 @@ import unicodedata  # noqa: E402
 
 from config.paths import AWG_DEFAULT_CONF, XRAY_CONF  # noqa: E402
 from config.secrets import HA_TUNNEL_IP  # noqa: E402
+from services.xray.config_manager import load_xray_config  # noqa: E402
 
 # ============================================================
 # ZverTBot SERVER PASSPORT CHECK
@@ -250,9 +251,8 @@ def load_xray_passport_config():
     }
 
     try:
-        with XRAY_CONF.open("r", encoding="utf-8") as f:
-            config = json.load(f)
-    except (OSError, json.JSONDecodeError) as e:
+        config = load_xray_config()
+    except (OSError, ValueError) as e:
         warn(f"Xray passport config: не удалось прочитать ({e})")
         return result
 

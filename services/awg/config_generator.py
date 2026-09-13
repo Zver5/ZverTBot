@@ -4,74 +4,46 @@
 
 import subprocess
 
-from config import AWG_CONF, SERVER_IP
+from config import SERVER_IP
 from data.storage import load_awg_registry
+from services.awg.config_manager import get_awg_interface_params, get_awg_listen_port
 from utils.logger import logger
 from utils.perf import profile
 
 
 def get_awg_server_params() -> tuple[str, dict]:
-    """
-    Возвращает параметры сервера AmneziaWG из реального AWG-конфига.
-
-    Returns:
-        (srv_pub, params): PublicKey сервера и параметры обфускации.
-    """
-    params = {}
-    private_key = None
-
+    """Возвращает параметры сервера AWG из [Interface]."""
     try:
-        with open(AWG_CONF, encoding="utf-8") as f:
-            for raw_line in f:
-                line = raw_line.strip()
-
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-
-                key, value = line.split("=", 1)
-                key = key.strip()
-                value = value.strip()
-
-                if key == "PrivateKey":
-                    private_key = value
-                elif key in {
-                    "Jc",
-                    "Jmin",
-                    "Jmax",
-                    "S1",
-                    "S2",
-                    "S3",
-                    "S4",
-                    "H1",
-                    "H2",
-                    "H3",
-                    "H4",
-                }:
-                    params[key] = value
-
-        required = {
-            "Jc",
-            "Jmin",
-            "Jmax",
-            "S1",
-            "S2",
-            "S3",
-            "S4",
-            "H1",
-            "H2",
-            "H3",
-            "H4",
+        fields = get_awg_interface_params()
+        private_key = fields.get("privatekey")
+        params = {
+            key: fields[key]
+            for key in {
+                "jc",
+                "jmin",
+                "jmax",
+                "s1",
+                "s2",
+                "s3",
+                "s4",
+                "h1",
+                "h2",
+                "h3",
+                "h4",
+            }
+            if key in fields
         }
-
+        required = {
+            "jc", "jmin", "jmax", "s1", "s2", "s3", "s4",
+            "h1", "h2", "h3", "h4",
+        }
         missing = required - params.keys()
-
         if missing:
             raise ValueError(
-                f"AWG parameters not found in {AWG_CONF}: {', '.join(sorted(missing))}"
+                "AWG parameters not found: " + ", ".join(sorted(missing))
             )
-
         if not private_key:
-            raise ValueError(f"PrivateKey not found in {AWG_CONF}")
+            raise ValueError("PrivateKey not found")
 
         result = subprocess.run(
             ["awg", "pubkey"],
@@ -80,31 +52,36 @@ def get_awg_server_params() -> tuple[str, dict]:
             capture_output=True,
             check=True,
         )
-
         srv_pub = result.stdout.strip()
-
         if not srv_pub:
             raise ValueError("Failed to derive AWG server public key")
 
-        return srv_pub, params
-
+        output_keys = {
+            "jc": "Jc",
+            "jmin": "Jmin",
+            "jmax": "Jmax",
+            "s1": "S1",
+            "s2": "S2",
+            "s3": "S3",
+            "s4": "S4",
+            "h1": "H1",
+            "h2": "H2",
+            "h3": "H3",
+            "h4": "H4",
+        }
+        return srv_pub, {
+            output_keys[key]: value for key, value in params.items()
+        }
     except OSError as e:
-        raise ValueError(f"Cannot read AWG server config {AWG_CONF}: {e}") from e
+        raise ValueError(f"Cannot read AWG server config: {e}") from e
 
 
 def get_awg_port() -> str:
     """Возвращает ListenPort из серверного AWG-конфига."""
     try:
-        with open(AWG_CONF, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("ListenPort"):
-                    _, value = line.split("=", 1)
-                    return value.strip()
+        return get_awg_listen_port() or "N/A"
     except OSError:
-        pass
-
-    return "N/A"
+        return "N/A"
 
 
 @profile()
@@ -136,7 +113,7 @@ def awg_get_config(username: str) -> str | None:
         listen_port = get_awg_port()
 
         if listen_port == "N/A":
-            raise ValueError(f"ListenPort не найден в {AWG_CONF}")
+            raise ValueError("ListenPort не найден в AWG-конфиге")
 
         config = f"""[Interface]
 PrivateKey = {u["privkey"]}

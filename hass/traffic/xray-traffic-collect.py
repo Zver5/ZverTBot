@@ -27,39 +27,16 @@ USAGE_JSON = paths.USAGE_JSON
 ARCHIVE_JSON = paths.ARCHIVE_JSON
 AWG_USERS_JSON = paths.AWG_USERS_JSON
 
-
-XRAY_CONF = paths.XRAY_CONF
+from services.xray.config_manager import (  # noqa: E402
+    get_vless_client_names,
+    get_vless_clients,
+    load_xray_config,
+)
 
 
 def get_xray_clients_from_config(cfg):
     """Возвращает уникальных VLESS-клиентов, сгруппированных по UUID."""
-    clients = {}
-
-    for inbound in cfg.get("inbounds", []):
-        if inbound.get("protocol") != "vless":
-            continue
-
-        port = inbound.get("port")
-        for client in inbound.get("settings", {}).get("clients", []):
-            name = client.get("email")
-            client_id = client.get("id")
-
-            if not name or not client_id:
-                continue
-
-            entry = clients.setdefault(
-                client_id,
-                {
-                    "id": client_id,
-                    "name": name,
-                    "inbounds": [],
-                },
-            )
-
-            if port not in entry["inbounds"]:
-                entry["inbounds"].append(port)
-
-    return list(clients.values())
+    return get_vless_clients(cfg)
 
 
 def sync_and_archive(data):
@@ -67,14 +44,10 @@ def sync_and_archive(data):
     try:
         active_users = set()
         # Собираем активных Xray
-        if XRAY_CONF.exists():
-            with open(XRAY_CONF) as f:
-                cfg = json.load(f)
-                for inb in cfg.get("inbounds", []):
-                    if inb.get("protocol") == "vless":
-                        for c in inb.get("settings", {}).get("clients", []):
-                            if c.get("email"):
-                                active_users.add(c["email"])
+        try:
+            active_users.update(get_vless_client_names(load_xray_config()))
+        except (FileNotFoundError, ValueError) as exc:
+            logger.warning("xray_traffic.config.load_failed | error=%s", exc)
         # Собираем активных AWG
         if AWG_USERS_JSON.exists():
             with open(AWG_USERS_JSON) as f:
@@ -236,11 +209,12 @@ def collect():
 
     # Динамическое получение уникальных Xray-клиентов из config.json.
     xray_users = []
-    if XRAY_CONF.exists():
-        with open(XRAY_CONF) as f:
-            cfg = json.load(f)
-        xray_clients = get_xray_clients_from_config(cfg)
-        xray_users = [client["name"] for client in xray_clients]
+    try:
+        xray_users = [
+            client["name"] for client in get_vless_clients(load_xray_config())
+        ]
+    except (FileNotFoundError, ValueError) as exc:
+        logger.warning("xray_traffic.config.load_failed | error=%s", exc)
 
     for u in xray_users:
         r_up = query_xray_stat(f"user>>>{u}>>>traffic>>>uplink")

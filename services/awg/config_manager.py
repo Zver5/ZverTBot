@@ -7,6 +7,8 @@
     AllowedIPs = 10.66.66.X/32
 """
 
+from dataclasses import dataclass
+
 from config.paths import AWG_CONF
 from utils.atomic import atomic_write
 from utils.client_operation_lock import client_operation_lock
@@ -59,18 +61,105 @@ def get_awg_readiness(content: str) -> tuple[bool, list[str]]:
     return not problems, problems
 
 
+@dataclass(frozen=True)
+class AwgConfigPeer:
+    """Peer из серверного AWG-конфига."""
+
+    name: str
+    public_key: str
+    allowed_ip: str
+
+
 def load_awg_config() -> str:
-    """
-    Загружает содержимое awg0.conf.
-
-    Returns:
-        str: Содержимое файла
-
-    Raises:
-        FileNotFoundError: Если файл не существует
-    """
+    """Загружает содержимое awg0.conf."""
     with open(AWG_CONF, encoding="utf-8") as f:
         return f.read()
+
+
+def parse_awg_interface(content: str) -> dict[str, str]:
+    """Разбирает параметры секции [Interface]."""
+    fields: dict[str, str] = {}
+    in_interface = False
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("["):
+            in_interface = line.lower() == "[interface]"
+            continue
+        if not in_interface or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        fields[key.strip().lower()] = value.strip()
+
+    return fields
+
+
+def get_awg_interface_params() -> dict[str, str]:
+    """Возвращает параметры серверной секции [Interface]."""
+    return parse_awg_interface(load_awg_config())
+
+
+def get_awg_listen_port() -> str | None:
+    """Возвращает ListenPort серверного AWG-конфига."""
+    return get_awg_interface_params().get("listenport")
+
+
+def parse_awg_peers(content: str) -> list[AwgConfigPeer]:
+    """Разбирает клиентские [Peer]-блоки из серверного AWG-конфига."""
+    peers: list[AwgConfigPeer] = []
+    current_name: str | None = None
+    current: dict[str, str] | None = None
+
+    def flush() -> None:
+        if current is None or not current.get("public_key"):
+            return
+        peers.append(
+            AwgConfigPeer(
+                name=current_name or "Unknown",
+                public_key=current["public_key"],
+                allowed_ip=current.get("allowed_ip", ""),
+            )
+        )
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        if line.startswith("#"):
+            if "Name:" in line:
+                if current is not None:
+                    flush()
+                    current = None
+                current_name = line.split("Name:", 1)[1].strip()
+            continue
+
+        if line.lower() == "[peer]":
+            flush()
+            current = {"public_key": "", "allowed_ip": ""}
+            continue
+
+        if current is None or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip().lower()
+        value = value.strip()
+
+        if key == "publickey":
+            current["public_key"] = value.replace(" ", "")
+        elif key == "allowedips":
+            current["allowed_ip"] = value.split(",", 1)[0].strip().split("/", 1)[0]
+
+    flush()
+    return peers
+
+
+def get_awg_peers() -> list[AwgConfigPeer]:
+    """Возвращает клиентские peers из серверного AWG-конфига."""
+    return parse_awg_peers(load_awg_config())
 
 
 @client_operation_lock

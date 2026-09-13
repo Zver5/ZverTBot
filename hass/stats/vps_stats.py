@@ -15,6 +15,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import SERVER_IP
 from config.secrets import HA_TUNNEL_IP as SOCKS5_IP  # noqa: E402
+from services.awg.config_manager import get_awg_peers
+from services.xray.config_manager import get_all_clients, load_xray_config
 from utils.atomic import atomic_write  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -30,8 +32,6 @@ GEOIP_JSON = paths.GEOIP_JSON
 USAGE_JSON = paths.USAGE_JSON
 RCLONE_STATUS_JSON = paths.RCLONE_STATUS_JSON
 STATS_JSON = paths.STATS_JSON
-AWG_CONF = paths.AWG_CONF
-XRAY_CONF = paths.XRAY_CONF
 XRAY_ACCESS_LOG = paths.XRAY_ACCESS_LOG
 
 
@@ -288,37 +288,18 @@ def collect_stats():
 
     # --- 2. AmneziaWG ---
     # --- 2. AmneziaWG ---
-    config_peers = []
-
-    if AWG_CONF.exists():
-        cur = {"name": "Unknown", "key": "", "ip": ""}
-        pending_name = None
-
-        with open(AWG_CONF) as conf_file:
-            for line in conf_file:
-                line = line.strip()
-                if not line:
-                    continue
-
-                if line.startswith("#"):
-                    if "Name:" in line:
-                        pending_name = line.split("Name:", 1)[1].strip()
-
-                elif line.lower() == "[peer]":
-                    if cur["key"]:
-                        config_peers.append(cur)
-
-                    cur = {"name": pending_name or "Unknown", "key": "", "ip": ""}
-                    pending_name = None
-
-                elif line.lower().startswith("publickey"):
-                    cur["key"] = re.sub(r"\s+", "", line.split("=", 1)[1])
-
-                elif line.lower().startswith("allowed"):
-                    cur["ip"] = line.split("=", 1)[1].strip().split("/")[0]
-
-        if cur["key"]:
-            config_peers.append(cur)
+    try:
+        config_peers = [
+            {
+                "name": peer.name,
+                "key": peer.public_key,
+                "ip": peer.allowed_ip,
+            }
+            for peer in get_awg_peers()
+        ]
+    except OSError as exc:
+        logger.warning("vps_stats.awg_config.load_failed | error=%s", exc)
+        config_peers = []
 
     from services.awg.runtime import extract_endpoint_ip, get_runtime_peers
 
@@ -416,25 +397,20 @@ def collect_stats():
 
     xray_port = None
     xray_clients_raw = []
-    seen_xray_clients = set()
     try:
-        with open(XRAY_CONF) as f:
-            cfg = json.load(f)
-        for ib in cfg.get("inbounds", []):
-            protocol = ib.get("protocol")
-            if protocol in ["vmess", "vless", "shadowsocks", "trojan"]:
-                if not xray_port:
-                    xray_port = ib.get("port")
-                for cl in ib.get("settings", {}).get("clients", []):
-                    name = cl.get("email", "Unknown")
-                    client_id = cl.get("id")
-                    identity = (protocol, client_id) if client_id else (protocol, name)
-                    if identity in seen_xray_clients:
-                        continue
-                    seen_xray_clients.add(identity)
-                    xray_clients_raw.append({"name": name, "id": client_id})
-    except Exception as e:
-        logger.warning("vps_stats.xray_config.load_failed | error=%s", e)
+        cfg = load_xray_config()
+        for client in get_all_clients(cfg):
+            xray_clients_raw.append(
+                {"name": client["name"], "id": client["id"]}
+            )
+
+        for inbound in cfg.get("inbounds", []):
+            if inbound.get("protocol") in {"vmess", "vless", "shadowsocks", "trojan"}:
+                if inbound.get("port") is not None:
+                    xray_port = inbound["port"]
+                    break
+    except (FileNotFoundError, ValueError) as exc:
+        logger.warning("vps_stats.xray_config.load_failed | error=%s", exc)
 
     # --- 5. Сбор соединений ---
     ip_data = {}

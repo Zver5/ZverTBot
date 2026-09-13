@@ -41,9 +41,24 @@ def test_awg_get_config_success(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         cg,
-        "AWG_CONF",
-        awg_conf,
+        "get_awg_interface_params",
+        lambda: {
+            "privatekey": "SERVER_PRIVATE_KEY",
+            "listenport": "51820",
+            "jc": "8",
+            "jmin": "50",
+            "jmax": "1000",
+            "s1": "117",
+            "s2": "74",
+            "s3": "63",
+            "s4": "82",
+            "h1": "127034270-227034269",
+            "h2": "860555595-960555594",
+            "h3": "1181708860-1281708859",
+            "h4": "1849055827-1949055826",
+        },
     )
+    monkeypatch.setattr(cg, "get_awg_listen_port", lambda: "51820")
 
     class FakeResult:
         stdout = "SERVER_PUBLIC_KEY\\n"
@@ -116,7 +131,18 @@ def test_awg_get_config_listen_port_not_found(monkeypatch, tmp_path):
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(cg, "AWG_CONF", awg_conf)
+    monkeypatch.setattr(
+        cg,
+        "get_awg_interface_params",
+        lambda: {
+            "privatekey": "SERVER_PRIVATE_KEY",
+            "jc": "8", "jmin": "50", "jmax": "1000",
+            "s1": "117", "s2": "74", "s3": "63", "s4": "82",
+            "h1": "127034270-227034269", "h2": "860555595-960555594",
+            "h3": "1181708860-1281708859", "h4": "1849055827-1949055826",
+        },
+    )
+    monkeypatch.setattr(cg, "get_awg_listen_port", lambda: None)
 
     result = cg.awg_get_config("test_user")
 
@@ -145,7 +171,11 @@ def test_get_awg_server_params_missing_required_param(monkeypatch, tmp_path):
         "[Interface]\nPrivateKey = SERVER_PRIVATE_KEY\nJc = 8\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(cg, "AWG_CONF", awg_conf)
+    monkeypatch.setattr(
+        cg,
+        "get_awg_interface_params",
+        lambda: {"privatekey": "SERVER_PRIVATE_KEY", "jc": "8"},
+    )
 
     import pytest
 
@@ -170,7 +200,16 @@ def test_get_awg_server_params_missing_private_key(monkeypatch, tmp_path):
         "H4 = 1849055827-1949055826\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(cg, "AWG_CONF", awg_conf)
+    monkeypatch.setattr(
+        cg,
+        "get_awg_interface_params",
+        lambda: {
+            "jc": "8", "jmin": "50", "jmax": "1000",
+            "s1": "117", "s2": "74", "s3": "63", "s4": "82",
+            "h1": "127034270-227034269", "h2": "860555595-960555594",
+            "h3": "1181708860-1281708859", "h4": "1849055827-1949055826",
+        },
+    )
 
     import pytest
 
@@ -196,7 +235,17 @@ def test_get_awg_server_params_empty_public_key(monkeypatch, tmp_path):
         "H4 = 1849055827-1949055826\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(cg, "AWG_CONF", awg_conf)
+    monkeypatch.setattr(
+        cg,
+        "get_awg_interface_params",
+        lambda: {
+            "privatekey": "SERVER_PRIVATE_KEY",
+            "jc": "8", "jmin": "50", "jmax": "1000",
+            "s1": "117", "s2": "74", "s3": "63", "s4": "82",
+            "h1": "127034270-227034269", "h2": "860555595-960555594",
+            "h3": "1181708860-1281708859", "h4": "1849055827-1949055826",
+        },
+    )
 
     class FakeResult:
         stdout = ""
@@ -249,12 +298,10 @@ def test_awg_get_config_missing_listen_port_raises_to_outer_handler(monkeypatch)
 
 
 def test_get_awg_port_returns_na_on_read_error(monkeypatch):
-    import builtins
-
     monkeypatch.setattr(
-        builtins,
-        "open",
-        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("read failed")),
+        cg,
+        "get_awg_listen_port",
+        lambda: (_ for _ in ()).throw(OSError("read failed")),
     )
 
     assert cg.get_awg_port() == "N/A"

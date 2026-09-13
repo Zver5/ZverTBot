@@ -506,3 +506,45 @@ def test_get_xray_readiness_detects_missing_reality_fields():
     assert any("не указан privateKey" in p for p in problems)
     assert any("не указан serverNames" in p for p in problems)
     assert any("не указан shortIds" in p for p in problems)
+
+def test_get_all_clients_supports_all_xray_protocols():
+    config = {
+        "inbounds": [
+            {
+                "protocol": "vmess",
+                "port": 443,
+                "settings": {"clients": [{"email": "vmess-user", "id": "vmess-id"}]},
+            },
+            {
+                "protocol": "vless",
+                "port": 8443,
+                "settings": {"clients": [{"email": "vless-user", "id": "vless-id"}]},
+            },
+            {
+                "protocol": "shadowsocks",
+                "port": 8388,
+                "settings": {
+                    "clients": [{"email": "ss-user", "id": "ss-id"}],
+                },
+            },
+            {
+                "protocol": "trojan",
+                "port": 443,
+                "settings": {"clients": [{"email": "trojan-user", "id": "trojan-id"}]},
+            },
+            {
+                "protocol": "dokodemo-door",
+                "port": 1234,
+                "settings": {"clients": [{"email": "ignored", "id": "ignored-id"}]},
+            },
+        ]
+    }
+
+    clients = cm.get_all_clients(config)
+
+    assert {(client["protocol"], client["name"]) for client in clients} == {
+        ("vmess", "vmess-user"),
+        ("vless", "vless-user"),
+        ("shadowsocks", "ss-user"),
+        ("trojan", "trojan-user"),
+    }

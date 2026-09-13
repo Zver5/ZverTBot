@@ -248,21 +248,82 @@ def get_vless_inbounds(config: dict) -> list:
 
 @profile()
 def get_all_vless_clients(config: dict) -> list:
-    """
-    Возвращает список имён всех VLESS клиентов (без дублей).
-
-    Args:
-        config: Конфигурация Xray
-
-    Returns:
-        list[str]: Список уникальных имён клиентов
-    """
+    """Возвращает уникальные имена всех VLESS-клиентов."""
     users = []
     for inb in get_vless_inbounds(config):
-        if "clients" in inb.get("settings", {}):
-            users.extend([c["email"] for c in inb["settings"]["clients"]])
-    # Убираем дубли (клиент дублируется в порты 443 и 2096)
+        clients = inb.get("settings", {}).get("clients", [])
+        users.extend(
+            client["email"]
+            for client in clients
+            if isinstance(client, dict) and client.get("email")
+        )
     return list(set(users))
+
+
+def get_vless_clients(config: dict) -> list[dict]:
+    """Возвращает уникальных VLESS-клиентов с их inbound-портами."""
+    clients: dict[str, dict] = {}
+
+    for inbound in get_vless_inbounds(config):
+        port = inbound.get("port")
+        for client in inbound.get("settings", {}).get("clients", []):
+            if not isinstance(client, dict):
+                continue
+
+            name = client.get("email")
+            client_id = client.get("id")
+            if not name or not client_id:
+                continue
+
+            entry = clients.setdefault(
+                client_id,
+                {
+                    "id": client_id,
+                    "name": name,
+                    "inbounds": [],
+                },
+            )
+            if port not in entry["inbounds"]:
+                entry["inbounds"].append(port)
+
+    return list(clients.values())
+
+
+def get_vless_client_names(config: dict) -> set[str]:
+    """Возвращает множество имён активных VLESS-клиентов."""
+    return {client["name"] for client in get_vless_clients(config)}
+
+
+def get_all_clients(config: dict) -> list[dict]:
+    """Возвращает уникальных клиентов из поддерживаемых Xray inbound."""
+    supported_protocols = {"vmess", "vless", "shadowsocks", "trojan"}
+    clients: dict[tuple[str, str], dict] = {}
+
+    for inbound in config.get("inbounds", []):
+        protocol = inbound.get("protocol")
+        if protocol not in supported_protocols:
+            continue
+
+        port = inbound.get("port")
+        for client in inbound.get("settings", {}).get("clients", []):
+            if not isinstance(client, dict):
+                continue
+
+            name = client.get("email") or "Unknown"
+            client_id = client.get("id")
+            identity = (protocol, client_id or name)
+
+            if identity in clients:
+                continue
+
+            clients[identity] = {
+                "name": name,
+                "id": client_id,
+                "protocol": protocol,
+                "port": port,
+            }
+
+    return list(clients.values())
 
 
 def add_client_to_all_inbounds(config: dict, username: str, uuid: str) -> int:

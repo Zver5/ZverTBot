@@ -12,10 +12,7 @@ from urllib.parse import urlsplit
 
 from telebot import types
 
-from config import (
-    AWG_CONF,
-    SERVER_IP,
-)
+from config import SERVER_IP
 from core.navigation import NAV_BACK_CALLBACK
 from data.storage import (
     load_awg_registry,
@@ -30,7 +27,10 @@ from data.traffic import (
 )
 from services.awg.client_manager import awg_del_user
 from services.awg.config_generator import awg_get_config
-from services.awg.config_manager import rename_peer_in_config
+from services.awg.config_manager import (
+    get_awg_listen_port,
+    rename_peer_in_config,
+)
 from services.bindings import remove_client_from_all_bindings
 from services.xray.client_manager import reload_xray
 from services.xray.config_manager import (
@@ -437,18 +437,7 @@ def send_qr_or_conf(bot, chat_id, username, proto, config_only=False):
                 check=True,
             )
 
-            listen_port = "N/A"
-
-            try:
-                with open(AWG_CONF, encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line.startswith("ListenPort"):
-                            _, value = line.split("=", 1)
-                            listen_port = value.strip()
-                            break
-            except OSError:
-                pass
+            listen_port = get_awg_listen_port() or "N/A"
 
             client_ip = load_awg_registry().get(username, {}).get("ip", "N/A")
 

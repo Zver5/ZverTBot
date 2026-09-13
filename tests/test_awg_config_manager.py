@@ -255,3 +255,52 @@ PrivateKey = REPLACE_WITH_AWG_SERVER_PRIVATE_KEY
         "не указан Address",
         "не указан ListenPort",
     ]
+
+
+def test_parse_awg_interface():
+    content = """
+[Interface]
+PrivateKey = SERVER_KEY
+ListenPort = 51820
+Jc = 8
+
+[Peer]
+PublicKey = PUB1
+AllowedIPs = 10.66.66.10/32
+"""
+
+    assert config_manager.parse_awg_interface(content) == {
+        "privatekey": "SERVER_KEY",
+        "listenport": "51820",
+        "jc": "8",
+    }
+
+
+def test_parse_awg_peers():
+    content = """
+[Interface]
+PrivateKey = SERVER_KEY
+
+# Name: user1
+[Peer]
+PublicKey = PUB1
+AllowedIPs = 10.66.66.10/32
+
+# Name: user2
+[Peer]
+PublicKey = PUB2
+AllowedIPs = 10.66.66.11/32
+"""
+
+    assert config_manager.parse_awg_peers(content) == [
+        config_manager.AwgConfigPeer("user1", "PUB1", "10.66.66.10"),
+        config_manager.AwgConfigPeer("user2", "PUB2", "10.66.66.11"),
+    ]
+
+
+def test_get_awg_listen_port(tmp_path, monkeypatch):
+    conf = tmp_path / "awg0.conf"
+    conf.write_text("[Interface]\nListenPort = 51820\n", encoding="utf-8")
+    monkeypatch.setattr(config_manager, "AWG_CONF", conf)
+
+    assert config_manager.get_awg_listen_port() == "51820"
