@@ -16,6 +16,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 from config.paths import RCLONE_STATUS_JSON
+from services.xray.config_manager import load_xray_config
 
 
 class MonitorCategory(StrEnum):
@@ -40,6 +41,7 @@ class MonitorFailure(StrEnum):
     BACKUP_FAILED = "backup_failed"
     BACKUP_STALE = "backup_stale"
     BACKUP_TIMESTAMP = "backup_timestamp"
+    CONFIG_FAILED = "config_failed"
 
 
 @dataclass(frozen=True)
@@ -187,8 +189,25 @@ def check_stats_http() -> MonitorResult:
     )
 
 
+def _xray_listen_port() -> int | None:
+    """Return the first VLESS inbound port configured for Xray."""
+    try:
+        config = load_xray_config()
+    except Exception:
+        return None
+
+    for inbound in config.get("inbounds", []):
+        if not isinstance(inbound, dict) or inbound.get("protocol") != "vless":
+            continue
+        try:
+            return int(inbound["port"])
+        except (KeyError, TypeError, ValueError):
+            continue
+    return None
+
+
 def check_xray() -> MonitorResult:
-    """Check Xray service and its known TCP endpoint."""
+    """Check Xray service and its configured VLESS TCP endpoint."""
     service = check_long_running_service(
         "xray",
         MonitorCategory.OPTIONAL,
@@ -197,30 +216,49 @@ def check_xray() -> MonitorResult:
     if not service.healthy:
         return service
 
-    if _tcp_check("127.0.0.1", 443):
+    port = _xray_listen_port()
+    if port is None:
+        return MonitorResult(
+            name="xray",
+            category=MonitorCategory.OPTIONAL,
+            healthy=False,
+            details="active; VLESS listen port unavailable",
+            failure=MonitorFailure.CONFIG_FAILED,
+        )
+
+    if _tcp_check("127.0.0.1", port):
         return MonitorResult(
             name="xray",
             category=MonitorCategory.OPTIONAL,
             healthy=True,
-            details="active; TCP 443 reachable",
+            details=f"active; TCP {port} reachable",
         )
 
     return MonitorResult(
         name="xray",
         category=MonitorCategory.OPTIONAL,
         healthy=False,
-        details="active; TCP 443 unreachable",
+        details=f"active; TCP {port} unreachable",
         failure=MonitorFailure.TCP_FAILED,
     )
 
 
+def _discover_awg_unit() -> str | None:
+    """Find an installed awg-quick instance without assuming awg0."""
+    result = _systemctl("list-unit-files", "awg-quick@*.service")
+    for line in result.stdout.splitlines():
+        unit = line.split()[0] if line.split() else ""
+        if unit.startswith("awg-quick@") and unit.endswith(".service"):
+            return unit[:-8]
+    return None
+
+
 def check_awg_service(
-    unit_name: str = "awg-quick@awg0",
+    unit_name: str | None = None,
 ) -> MonitorResult:
     """Check AWG systemd unit, interface and configured listening port."""
-    exists = _systemctl("list-unit-files", f"{unit_name}.service")
-
-    if f"{unit_name}.service" not in exists.stdout:
+    unit_name = unit_name or _discover_awg_unit()
+    if unit_name is None:
         return MonitorResult(
             name="awg",
             category=MonitorCategory.OPTIONAL,
@@ -245,7 +283,7 @@ def check_awg_service(
         )
 
     show = subprocess.run(
-        ["awg", "show", "awg0"],
+        ["awg", "show", unit_name.split("@", 1)[1]],
         capture_output=True,
         text=True,
         timeout=5,
@@ -257,7 +295,7 @@ def check_awg_service(
             name="awg",
             category=MonitorCategory.OPTIONAL,
             healthy=False,
-            details="awg0 interface unavailable",
+            details=f"{unit_name} interface unavailable",
             failure=MonitorFailure.UDP_FAILED,
         )
 
@@ -280,7 +318,7 @@ def check_awg_service(
         name="awg",
         category=MonitorCategory.OPTIONAL,
         healthy=True,
-        details=f"awg0 active; UDP {port}",
+        details=f"{unit_name} active; UDP {port}",
     )
 
 

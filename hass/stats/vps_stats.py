@@ -241,6 +241,7 @@ def collect_stats():
     global stats_data
     global content
 
+    xray_port = None
     geoip_data = load_geoip_data()
 
     # --- 1. Трафик ---
@@ -407,7 +408,6 @@ def collect_stats():
 
     # --- 4. Настройки ---
 
-    xray_port = None
     xray_clients_raw = []
     try:
         cfg = load_xray_config()
@@ -416,11 +416,6 @@ def collect_stats():
                 {"name": client["name"], "id": client["id"]}
             )
 
-        for inbound in cfg.get("inbounds", []):
-            if inbound.get("protocol") in {"vmess", "vless", "shadowsocks", "trojan"}:
-                if inbound.get("port") is not None:
-                    xray_port = inbound["port"]
-                    break
     except (FileNotFoundError, ValueError) as exc:
         logger.warning("vps_stats.xray_config.load_failed | error=%s", exc)
 

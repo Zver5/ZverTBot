@@ -196,20 +196,27 @@ def test_stats_http_http_failure_is_down(mock_systemctl):
 
 
 @patch("services.vps_monitor._systemctl")
-def test_xray_requires_tcp_443(mock_systemctl):
+def test_xray_uses_configured_vless_port(mock_systemctl):
     mock_systemctl.side_effect = [
         completed("xray.service enabled\n"),
         completed("active\n"),
     ]
 
-    with patch(
-        "services.vps_monitor._tcp_check",
-        return_value=True,
+    with (
+        patch(
+            "services.vps_monitor.load_xray_config",
+            return_value={"inbounds": [{"protocol": "vless", "port": 8443}]},
+        ),
+        patch(
+            "services.vps_monitor._tcp_check",
+            return_value=True,
+        ) as mock_tcp,
     ):
         result = check_xray()
 
     assert result.healthy is True
-    assert "443" in result.details
+    assert "8443" in result.details
+    mock_tcp.assert_called_once_with("127.0.0.1", 8443)
 
 
 @patch("services.vps_monitor._systemctl")
@@ -219,37 +226,62 @@ def test_xray_port_failure_is_down(mock_systemctl):
         completed("active\n"),
     ]
 
-    with patch(
-        "services.vps_monitor._tcp_check",
-        return_value=False,
+    with (
+        patch(
+            "services.vps_monitor.load_xray_config",
+            return_value={"inbounds": [{"protocol": "vless", "port": 443}]},
+        ),
+        patch(
+            "services.vps_monitor._tcp_check",
+            return_value=False,
+        ),
     ):
         result = check_xray()
 
     assert result.healthy is False
-    assert "unreachable" in result.details
+    assert "TCP 443 unreachable" in result.details
+
+
+@patch("services.vps_monitor._systemctl")
+def test_xray_config_failure_is_down(mock_systemctl):
+    mock_systemctl.side_effect = [
+        completed("xray.service enabled\n"),
+        completed("active\n"),
+    ]
+
+    with patch(
+        "services.vps_monitor.load_xray_config",
+        return_value={"inbounds": []},
+    ):
+        result = check_xray()
+
+    assert result.healthy is False
+    assert result.failure.value == "config_failed"
 
 
 @patch("services.vps_monitor._systemctl")
 def test_awg_active_and_interface_is_healthy(mock_systemctl):
     mock_systemctl.side_effect = [
-        completed("awg-quick@awg0.service enabled\n"),
+        completed("awg-quick@awg1.service enabled\n"),
         completed("active\n"),
     ]
 
     with patch(
         "services.vps_monitor.subprocess.run",
-        return_value=completed("interface: awg0\n  listening port: 58352\n"),
-    ):
+        return_value=completed("interface: awg1\n  listening port: 58352\n"),
+    ) as mock_run:
         result = check_awg_service()
 
     assert result.healthy is True
+    assert "awg-quick@awg1" in result.details
     assert "58352" in result.details
+    assert mock_run.call_args.args[0] == ["awg", "show", "awg1"]
 
 
 @patch("services.vps_monitor._systemctl")
 def test_awg_interface_failure_is_down(mock_systemctl):
     mock_systemctl.side_effect = [
-        completed("awg-quick@awg0.service enabled\n"),
+        completed("awg-quick@awg2.service enabled\n"),
         completed("active\n"),
     ]
 

@@ -4,20 +4,12 @@ import json
 import socketserver
 
 from services.vps_status import build_vps_status
-from services.vps_status_source import load_prepared_vps_payload
-
-
-def fmt_traffic(b):
-    """Умное форматирование: <1 ГБ → МБ, ≥1 ГБ → ГБ"""
-    try:
-        b = float(b)
-        if b >= 1073741824:
-            return f"{b / 1073741824:.2f} GB"
-        if b >= 1048576:
-            return f"{b / 1048576:.0f} MB"
-        return f"{b / 1024:.0f} KB"
-    except Exception:
-        return "0 KB"
+from services.vps_status_source import (
+    DEFAULT_MAX_STATS_AGE_SECONDS,
+    is_stats_payload_fresh,
+    load_prepared_vps_payload,
+    stats_payload_age_seconds,
+)
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -27,17 +19,34 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             return
 
-        result = load_prepared_vps_payload()
+        raw = load_prepared_vps_payload()
+        if not raw:
+            self._send_json(503, {"error": "vps_stats_unavailable"})
+            return
 
-        # 4. New stable public VPS contract for Home Assistant.
-        if self.path == "/vps-status.json":
-            result = build_vps_status(result).to_dict()
+        if not is_stats_payload_fresh(
+            raw,
+            max_age_seconds=DEFAULT_MAX_STATS_AGE_SECONDS,
+        ):
+            age = stats_payload_age_seconds(raw)
+            details = {
+                "error": "vps_stats_stale",
+                "max_age_seconds": DEFAULT_MAX_STATS_AGE_SECONDS,
+                "age_seconds": None if age is None else int(age),
+            }
+            self._send_json(503, details)
+            return
 
-        # 5. Отдаём JSON
-        self.send_response(200)
-        self.send_header("Content-type", "application/json")
+        result = build_vps_status(raw).to_dict()
+        self._send_json(200, result)
+
+    def _send_json(self, status: int, payload: dict) -> None:
+        body = json.dumps(payload, ensure_ascii=False).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(json.dumps(result).encode())
+        self.wfile.write(body)
 
     def log_message(self, *a):
         pass
