@@ -25,8 +25,11 @@ def test_build_status_services_missing(monkeypatch, tmp_path):
             }
         )
     )
-
-    monkeypatch.setattr(st, "STATS_JSON", str(stats))
+    monkeypatch.setattr(
+        st,
+        "load_prepared_vps_payload",
+        lambda: json.loads(stats.read_text()),
+    )
 
     _real_open = open
 
@@ -49,46 +52,17 @@ def test_build_status_unknown_service_state(monkeypatch, tmp_path):
 
     stats.write_text(json.dumps({"services": {"test": 99}}))
 
-    monkeypatch.setattr(st, "STATS_JSON", str(stats))
+    monkeypatch.setattr(
+        st,
+        "load_prepared_vps_payload",
+        lambda: {"services": {"test": 99}},
+    )
 
     result = st._build_status_text()
 
     assert "не установлен" in result
 
 
-def test_build_status_meminfo_error(monkeypatch, tmp_path):
-
-    stats = tmp_path / "stats.json"
-
-    stats.write_text(json.dumps({}))
-
-    monkeypatch.setattr(st, "STATS_JSON", str(stats))
-
-    original_open = open
-
-    def fake_open(path, *args, **kwargs):
-        if path == "/proc/meminfo":
-            raise Exception("mem fail")
-        return original_open(path, *args, **kwargs)
-
-    with patch("builtins.open", side_effect=fake_open):
-        result = st._build_status_text()
-
-    assert "Swap" in result
-
-
-def test_build_status_proc_error(monkeypatch, tmp_path):
-
-    stats = tmp_path / "stats.json"
-
-    stats.write_text(json.dumps({}))
-
-    monkeypatch.setattr(st, "STATS_JSON", str(stats))
-
-    with patch("os.listdir", side_effect=Exception("proc fail")):
-        result = st._build_status_text()
-
-    assert "Процессы" in result
 
 
 def test_status_text_calls_builder_each_time(monkeypatch):
@@ -177,24 +151,16 @@ def test_build_status_process_count_error_logs_standardized_event(
 ):
     stats = tmp_path / "stats.json"
     stats.write_text("{}")
-    monkeypatch.setattr(st, "STATS_JSON", str(stats))
 
     monkeypatch.setattr(
-        st.os,
-        "listdir",
-        Mock(side_effect=OSError("proc list failed")),
+        st,
+        "load_prepared_vps_payload",
+        Mock(side_effect=OSError("payload read failed")),
     )
 
-    with patch("services.stats.logger.exception") as mock_exception:
-        st.get_status_text()
+    result = st.get_status_text()
 
-    calls = [
-        call
-        for call in mock_exception.call_args_list
-        if call.args and call.args[0] == "stats.status.process_count_failed | error=%s"
-    ]
-    assert len(calls) == 1
-    assert isinstance(calls[0].args[1], OSError)
+    assert "Ошибка" in result
 
 
 def test_get_bot_stats_text_logs_standardized_error(monkeypatch):
@@ -243,32 +209,3 @@ def test_get_client_stats_text_logs_standardized_awg_error(monkeypatch):
         "user",
         error,
     )
-
-
-def test_build_status_swap_error_logs_standardized_event(
-    monkeypatch,
-    tmp_path,
-):
-    import builtins
-
-    stats = tmp_path / "stats.json"
-    stats.write_text("{}")
-    monkeypatch.setattr(st, "STATS_JSON", str(stats))
-
-    original_open = builtins.open
-
-    def broken_open(path, *args, **kwargs):
-        if path == "/proc/meminfo":
-            raise OSError("meminfo read failed")
-        return original_open(path, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "open", broken_open)
-
-    with patch("services.stats.logger.exception") as mock_exception:
-        st.get_status_text()
-
-    mock_exception.assert_called_once()
-    args = mock_exception.call_args.args
-    assert args[0] == "stats.status.swap_read_failed | error=%s"
-    assert isinstance(args[1], OSError)
-    assert str(args[1]) == "meminfo read failed"

@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -168,6 +169,55 @@ def clean_ip(ip):
     if "::ffff:" in ip:
         ip = ip.split("::ffff:")[-1]
     return ip
+
+
+def _collect_system_runtime():
+    """Собирает системные показатели, используемые всеми потребителями stats.json."""
+    uptime_seconds = 0.0
+    try:
+        with open("/proc/uptime") as file:
+            uptime_seconds = float(file.readline().split()[0])
+    except (OSError, ValueError, IndexError) as exc:
+        logger.warning("vps_stats.uptime.read_failed | error=%s", exc)
+
+    swap_used_mb = 0
+    swap_percent = 0.0
+    try:
+        meminfo = {}
+        with open("/proc/meminfo") as file:
+            for line in file:
+                key, value = line.split(":", 1)
+                meminfo[key] = int(value.split()[0])
+
+        swap_total = meminfo.get("SwapTotal", 0)
+        swap_free = meminfo.get("SwapFree", 0)
+        swap_used_kb = max(swap_total - swap_free, 0)
+
+        swap_used_mb = swap_used_kb // 1024
+        swap_percent = (
+            round(swap_used_kb / swap_total * 100, 1)
+            if swap_total > 0
+            else 0.0
+        )
+    except (OSError, ValueError, IndexError) as exc:
+        logger.warning("vps_stats.swap.read_failed | error=%s", exc)
+
+    try:
+        process_count = sum(
+            1 for entry in os.listdir("/proc") if entry.isdigit()
+        )
+    except OSError as exc:
+        logger.warning("vps_stats.process_count.read_failed | error=%s", exc)
+        process_count = 0
+
+    return {
+        "uptime_seconds": int(uptime_seconds),
+        "swap": {
+            "used_mb": swap_used_mb,
+            "percent": swap_percent,
+        },
+        "processes": process_count,
+    }
 
 
 def collect_stats():
@@ -501,7 +551,10 @@ def collect_stats():
     # --- Public IP сервера ---
     server_ip = SERVER_IP or "unknown"
 
-    # --- 9. Вывод JSON (ДОБАВЛЕНО: "services") ---
+    # --- 9. Системный runtime ---
+    runtime = _collect_system_runtime()
+
+    # --- 10. Вывод JSON ---
     stats_data = {
         "cpu": float(run(["awk", "{print $1}", "/proc/loadavg"]) or 0),
         "mem": (
@@ -521,6 +574,9 @@ def collect_stats():
         )(__import__("os").statvfs("/")),
         "vpn_total_gb": vpn_total_gb,
         "server_ip": server_ip,
+        "uptime_seconds": runtime["uptime_seconds"],
+        "swap": runtime["swap"],
+        "processes": runtime["processes"],
         "awg_clients": awg_clients,
         "xray_clients": xray_clients,
         "connections": all_conns,

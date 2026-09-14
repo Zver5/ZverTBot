@@ -886,3 +886,68 @@ def test_collect_handles_missing_live_awg_peer():
 
     assert module.awg_clients
     assert any(peer["online"] is False for peer in module.awg_clients)
+
+
+def test_collect_system_runtime(monkeypatch):
+    from hass.stats import vps_stats
+
+    class FakeFile:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def __iter__(self):
+            return iter(
+                [
+                    "SwapTotal:       2048 kB\n",
+                    "SwapFree:        1024 kB\n",
+                ]
+            )
+
+        def readline(self):
+            return "3661.5 0\n"
+
+    monkeypatch.setattr("builtins.open", lambda *args, **kwargs: FakeFile())
+    monkeypatch.setattr(
+        vps_stats.os,
+        "listdir",
+        lambda path: ["1", "2", "abc", "100"],
+    )
+
+    result = vps_stats._collect_system_runtime()
+
+    assert result == {
+        "uptime_seconds": 3661,
+        "swap": {
+            "used_mb": 1,
+            "percent": 50.0,
+        },
+        "processes": 3,
+    }
+
+
+def test_collect_system_runtime_handles_errors(monkeypatch):
+    from hass.stats import vps_stats
+
+    def fail_open(*args, **kwargs):
+        raise OSError("read failed")
+
+    monkeypatch.setattr("builtins.open", fail_open)
+    monkeypatch.setattr(
+        vps_stats.os,
+        "listdir",
+        lambda path: (_ for _ in ()).throw(OSError("proc failed")),
+    )
+
+    result = vps_stats._collect_system_runtime()
+
+    assert result == {
+        "uptime_seconds": 0,
+        "swap": {
+            "used_mb": 0,
+            "percent": 0.0,
+        },
+        "processes": 0,
+    }

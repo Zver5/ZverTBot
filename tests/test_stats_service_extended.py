@@ -27,7 +27,11 @@ def test_build_status_text_ok(monkeypatch, tmp_path):
         )
     )
 
-    monkeypatch.setattr(st, "STATS_JSON", str(stats))
+    monkeypatch.setattr(
+        st,
+        "load_prepared_vps_payload",
+        lambda: json.loads(stats.read_text()),
+    )
     text = st._build_status_text()
 
     assert "CPU" in text
@@ -39,7 +43,11 @@ def test_build_status_text_ok(monkeypatch, tmp_path):
 
 
 def test_build_status_text_missing_file(monkeypatch):
-    monkeypatch.setattr(st, "STATS_JSON", "/no/such/file.json")
+    monkeypatch.setattr(
+        st,
+        "load_prepared_vps_payload",
+        lambda: {},
+    )
 
     text = st._build_status_text()
 
@@ -164,7 +172,11 @@ def test_build_status_service_dict_with_uptime(monkeypatch, tmp_path):
         )
     )
 
-    monkeypatch.setattr(st, "STATS_JSON", str(stats))
+    monkeypatch.setattr(
+        st,
+        "load_prepared_vps_payload",
+        lambda: json.loads(stats.read_text()),
+    )
 
     result = st._build_status_text()
 

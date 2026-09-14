@@ -1,3 +1,4 @@
+import json
 from unittest.mock import Mock
 
 import services.stats as st
@@ -13,34 +14,16 @@ def test_status_cache_public(monkeypatch, tmp_path):
 
     f = tmp_path / "stats.json"
     f.write_text('{"cpu":1,"mem":2,"disk":{"percent":3},"services":{}}')
-
-    monkeypatch.setattr(st, "STATS_JSON", str(f))
+    monkeypatch.setattr(
+        st,
+        "load_prepared_vps_payload",
+        lambda: json.loads(f.read_text()),
+    )
 
     text = st.get_status_text()
 
     assert "VPS ОТЧЕТ" in text
 
-
-def test_status_swap_error(monkeypatch, tmp_path):
-    reset_cache()
-
-    f = tmp_path / "stats.json"
-    f.write_text("{}")
-
-    monkeypatch.setattr(st, "STATS_JSON", str(f))
-
-    real_open = open
-
-    def fake_open(path, *args, **kwargs):
-        if path == "/proc/meminfo":
-            raise Exception("mem fail")
-        return real_open(path, *args, **kwargs)
-
-    monkeypatch.setattr("builtins.open", fake_open)
-
-    text = st._build_status_text()
-
-    assert "Swap" in text
 
 
 def test_awg_without_ip(monkeypatch):

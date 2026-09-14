@@ -4,15 +4,13 @@ services/stats.py
 Функции: статистика бота, статистика клиента, статус VPS.
 """
 
-import json
-import os
 import subprocess
 
 from config import BOT_NAME, BOT_VERSION
-from config.paths import STATS_JSON
 from core.navigation import NAV_BACK_CALLBACK, NAV_HOME_CALLBACK
 from data.storage import load_awg_registry, load_stats
 from data.traffic import get_client_traffic, load_usage
+from services.vps_status_source import load_prepared_vps_payload
 from utils.helpers import fmt_traffic
 from utils.logger import logger
 
@@ -20,27 +18,43 @@ from utils.logger import logger
 def _build_status_text():
     BT = chr(96)
     NL = chr(10)
+
     try:
-        with open(STATS_JSON) as f:
-            data = json.load(f)
-        with open("/proc/uptime") as f:
-            up_sec = float(f.readline().split()[0])
-        d, r = divmod(up_sec, 86400)
-        h, r = divmod(r, 3600)
-        m, _ = divmod(r, 60)
+        data = load_prepared_vps_payload()
+        if not data:
+            return "❌ Ошибка: не удалось загрузить VPS статистику"
+
+        uptime_seconds = int(data.get("uptime_seconds", 0))
+        d, remainder = divmod(uptime_seconds, 86400)
+        h, remainder = divmod(remainder, 3600)
+        m, _ = divmod(remainder, 60)
+
         cpu_pct = f"{data.get('cpu', 0):.1f}%"
         ram_pct = f"{data.get('mem', 0):.1f}%"
+
         disk_val = data.get("disk", {})
         disk_pct = (
             f"{disk_val.get('percent', 0):.1f}%"
             if isinstance(disk_val, dict)
             else f"{disk_val:.1f}%"
         )
+
         traffic = f"{BT}{data.get('vpn_total_gb', 0):.2f} GB{BT}"
+
+        swap = data.get("swap", {})
+        if isinstance(swap, dict):
+            swap_used_mb = swap.get("used_mb", 0)
+            swap_pct = f"{swap.get('percent', 0):.1f}%"
+        else:
+            swap_used_mb = 0
+            swap_pct = "0.0%"
+
+        procs = data.get("processes", 0)
+
         svc_dict = data.get("services", {})
         svc_lines = []
 
-        for s, service_data in svc_dict.items():
+        for service, service_data in svc_dict.items():
             if isinstance(service_data, dict):
                 state = service_data.get("status", -1)
                 uptime = service_data.get("uptime")
@@ -51,50 +65,15 @@ def _build_status_text():
             if state == 1:
                 icon = "🟢"
                 status = uptime or "работает"
-
             elif state == 0:
                 icon = "🟡"
                 status = "остановлен"
-
             else:
                 icon = "⚪"
                 status = "не установлен"
 
-            svc_lines.append(f"{icon} {BT}{s}{BT} — {status}")
-        try:
-            with open("/proc/meminfo") as f:
-                meminfo = f.read()
-            swap_total = int(
-                [line for line in meminfo.splitlines() if "SwapTotal" in line][
-                    0
-                ].split()[1]
-            )
-            swap_free = int(
-                [line for line in meminfo.splitlines() if "SwapFree" in line][
-                    0
-                ].split()[1]
-            )
-            swap_used_mb = (swap_total - swap_free) // 1024
-            swap_pct = (
-                f"{((swap_total - swap_free) / swap_total * 100):.1f}%"
-                if swap_total > 0
-                else "0.0%"
-            )
-        except Exception as e:
-            logger.exception(
-                "stats.status.swap_read_failed | error=%s",
-                e,
-            )
-            swap_used_mb = 0
-            swap_pct = "N/A"
-        try:
-            procs = len([p for p in os.listdir("/proc") if p.isdigit()])
-        except Exception as e:
-            logger.exception(
-                "stats.status.process_count_failed | error=%s",
-                e,
-            )
-            procs = "N/A"
+            svc_lines.append(f"{icon} {BT}{service}{BT} — {status}")
+
         return (
             f"📊 *VPS ОТЧЕТ:*{NL}"
             f"🐺 {BOT_NAME}: v{BOT_VERSION}{NL}{NL}"
