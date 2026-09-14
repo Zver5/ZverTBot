@@ -727,7 +727,7 @@ def test_collect_handles_invalid_usage_json(monkeypatch):
     assert module.usage_data == {}
 
 
-def test_collect_reads_usage_json_twice(monkeypatch):
+def test_collect_reads_usage_json_once(monkeypatch):
     import builtins
     from io import StringIO
 
@@ -750,7 +750,7 @@ def test_collect_reads_usage_json_twice(monkeypatch):
     module = load_vps_stats()
     module.collect_stats()
 
-    assert calls == 2
+    assert calls == 1
 
 
 def test_collect_logs_awg_handshake_command_error(monkeypatch, caplog):
@@ -835,21 +835,16 @@ def test_collect_logs_rclone_status_error(monkeypatch, caplog):
     assert "rclone status read failed" in caplog.text
 
 
-def test_collect_logs_xray_usage_error(monkeypatch, caplog):
+def test_collect_logs_usage_read_error(monkeypatch, caplog):
     import builtins
     import logging
 
     real_open = builtins.open
     usage_path = load_vps_stats().USAGE_JSON
-    calls = 0
 
     def fake_open(path, *args, **kwargs):
-        nonlocal calls
         if Path(path) == usage_path:
-            calls += 1
-            if calls == 2:
-                raise OSError("xray usage read failed")
-            return real_open(path, *args, **kwargs)
+            raise OSError("usage read failed")
         return real_open(path, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "open", fake_open)
@@ -860,8 +855,9 @@ def test_collect_logs_xray_usage_error(monkeypatch, caplog):
         module.collect_stats()
 
     assert module.usage_data == {}
-    assert "vps_stats.xray_usage.read_failed" in caplog.text
-    assert "xray usage read failed" in caplog.text
+    assert module.vpn_total_gb == 0
+    assert "vps_stats.usage.read_failed" in caplog.text
+    assert "usage read failed" in caplog.text
 
 
 def test_collect_handles_awg_handshake_command_error(monkeypatch):
@@ -880,13 +876,13 @@ def test_collect_handles_awg_handshake_command_error(monkeypatch):
     module = load_vps_stats()
     module.collect_stats()
 
-    assert module.wg_peers
-    assert all(peer["online"] is False for peer in module.wg_peers)
+    assert module.awg_clients
+    assert all(peer["online"] is False for peer in module.awg_clients)
 
 
 def test_collect_handles_missing_live_awg_peer():
     module = load_vps_stats()
     module.collect_stats()
 
-    assert module.wg_peers
-    assert any(peer["online"] is False for peer in module.wg_peers)
+    assert module.awg_clients
+    assert any(peer["online"] is False for peer in module.awg_clients)

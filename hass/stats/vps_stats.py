@@ -177,7 +177,7 @@ def collect_stats():
     global config_peers
     global live_peers
     global hs_times
-    global wg_peers
+    global awg_clients
     global f2b_stats
     global xray_port
     global xray_clients_raw
@@ -194,19 +194,30 @@ def collect_stats():
     geoip_data = load_geoip_data()
 
     # --- 1. Трафик ---
-    # --- 1. Трафик (из usage.json, только VPN-клиенты) ---
     vpn_total_gb = 0
+    usage_data = {}
+    usage_clients = {}
+
     try:
         with open(USAGE_JSON) as f:
             usage_data = json.load(f)
-            vpn_total_bytes = sum(
-                c.get("total", 0) for c in usage_data.get("clients", {}).values()
-            )
-            vpn_total_gb = round(vpn_total_bytes / 1073741824, 2)
-    except Exception:
-        vpn_total_gb = 0
 
-    # --- 2. AmneziaWG ---
+        if not isinstance(usage_data, dict):
+            usage_data = {}
+
+        usage_clients = usage_data.get("clients", {})
+        if not isinstance(usage_clients, dict):
+            usage_clients = {}
+
+        vpn_total_bytes = sum(
+            c.get("total", 0)
+            for c in usage_clients.values()
+            if isinstance(c, dict)
+        )
+        vpn_total_gb = round(vpn_total_bytes / 1073741824, 2)
+    except Exception as exc:
+        logger.warning("vps_stats.usage.read_failed | error=%s", exc)
+
     # --- 2. AmneziaWG ---
     try:
         config_peers = [
@@ -233,7 +244,7 @@ def collect_stats():
 
     hs_times = get_latest_handshakes() if live_peers else {}
 
-    wg_peers = []
+    awg_clients = []
     for c in config_peers:
         p = {
             "name": c["name"],
@@ -252,9 +263,22 @@ def collect_stats():
             if lp.allowed_ip:
                 p["ip"] = lp.allowed_ip
             p["hs"] = fmt_hs(lp.latest_handshake)
-            p["rx"] = fmt_size(lp.rx_bytes)
-            p["tx"] = fmt_size(lp.tx_bytes)
-            p["total_bytes"] = lp.rx_bytes + lp.tx_bytes
+
+            usage_stats = usage_clients.get(c["name"], {})
+            if not isinstance(usage_stats, dict):
+                usage_stats = {}
+
+            downlink = usage_stats.get("downlink", 0)
+            uplink = usage_stats.get("uplink", 0)
+            total_bytes = downlink + uplink
+
+            p["rx"] = fmt_size(downlink)
+            p["tx"] = fmt_size(uplink)
+            p["downlink"] = downlink
+            p["uplink"] = uplink
+            p["total"] = fmt_size(total_bytes)
+            p["total_bytes"] = total_bytes
+
             # Надежная проверка online:
             # handshake был и он был менее 300 секунд (5 мин) назад
             current_time = int(time.time())
@@ -266,12 +290,26 @@ def collect_stats():
                 else "never"
             )
         else:
-            p["total_bytes"] = 0
+            usage_stats = usage_clients.get(c["name"], {})
+            if not isinstance(usage_stats, dict):
+                usage_stats = {}
+
+            downlink = usage_stats.get("downlink", 0)
+            uplink = usage_stats.get("uplink", 0)
+            total_bytes = downlink + uplink
+
+            p["rx"] = fmt_size(downlink)
+            p["tx"] = fmt_size(uplink)
+            p["downlink"] = downlink
+            p["uplink"] = uplink
+            p["total"] = fmt_size(total_bytes)
+            p["total_bytes"] = total_bytes
             p["online"] = False
             p["last_seen"] = "never"
         # Добавляем GeoIP данные
         p["geoip"] = geoip_data.get(c["name"], {})
-        wg_peers.append(p)
+        p["proto"] = "awg"
+        awg_clients.append(p)
 
     # --- 3. Fail2Ban ---
     f2b_stats = {"total_banned": 0, "currently_banned": 0}
@@ -408,14 +446,6 @@ def collect_stats():
     # Реальные IP клиентов из Xray access.log
     xray_ips = get_xray_online_ips()
 
-    # Читаем usage.json для получения реальных дельт трафика и статуса online
-    usage_data = {}
-    try:
-        with open(USAGE_JSON) as f:
-            usage_data = json.load(f)
-    except Exception as e:
-        logger.warning("vps_stats.xray_usage.read_failed | error=%s", e)
-
     for cl in xray_clients_raw:
         name = cl["name"]
         client_usage = usage_data.get("clients", {}).get(name, {})
@@ -438,7 +468,16 @@ def collect_stats():
                 "endpoint": "active" if is_online else "offline",
                 "rx": fmt_size(client_usage.get("downlink", 0)),
                 "tx": fmt_size(client_usage.get("uplink", 0)),
-                "total": fmt_size(client_usage.get("total", 0)),
+                "downlink": client_usage.get("downlink", 0),
+                "uplink": client_usage.get("uplink", 0),
+                "total": fmt_size(
+                    client_usage.get("downlink", 0)
+                    + client_usage.get("uplink", 0)
+                ),
+                "total_bytes": (
+                    client_usage.get("downlink", 0)
+                    + client_usage.get("uplink", 0)
+                ),
                 "online": is_online,
                 "hs": "active" if is_online else "offline",
                 "last_seen": last_seen,
@@ -482,7 +521,7 @@ def collect_stats():
         )(__import__("os").statvfs("/")),
         "vpn_total_gb": vpn_total_gb,
         "server_ip": server_ip,
-        "peers": wg_peers,
+        "awg_clients": awg_clients,
         "xray_clients": xray_clients,
         "connections": all_conns,
         "fail2ban": f2b_stats,
