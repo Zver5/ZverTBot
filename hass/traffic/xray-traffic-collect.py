@@ -122,9 +122,15 @@ def query_xray_stat(name):
                     break
             return val
         return 0
+    except grpc.RpcError as e:
+        if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+            logger.warning("xray_traffic.query.timeout | name=%s", name)
+        else:
+            logger.exception("xray_traffic.query.failed | error=%s", e)
+        return None
     except Exception as e:
         logger.exception("xray_traffic.query.failed | error=%s", e)
-        return 0
+        return None
 
 
 def parse_size(s):
@@ -222,10 +228,23 @@ def collect():
         h = old_cl.get(u, {})
         s_up = h.get("uplink", 0)
         s_dn = h.get("downlink", 0)
-        ls_up = h.get("_snap_up", r_up)
-        ls_dn = h.get("_snap_down", r_dn)
-        d_up = r_up - ls_up if r_up >= ls_up else r_up
-        d_dn = r_dn - ls_dn if r_dn >= ls_dn else r_dn
+        ls_up = h.get("_snap_up", r_up if r_up is not None else 0)
+        ls_dn = h.get("_snap_down", r_dn if r_dn is not None else 0)
+
+        if r_up is None:
+            d_up = 0
+            next_snap_up = ls_up
+        else:
+            d_up = r_up - ls_up if r_up >= ls_up else r_up
+            next_snap_up = r_up
+
+        if r_dn is None:
+            d_dn = 0
+            next_snap_dn = ls_dn
+        else:
+            d_dn = r_dn - ls_dn if r_dn >= ls_dn else r_dn
+            next_snap_dn = r_dn
+
         f_up = s_up + d_up
         f_dn = s_dn + d_dn
         delta = d_up + d_dn
@@ -235,8 +254,8 @@ def collect():
             "downlink": f_dn,
             "total": f_up + f_dn,
             "last_ip": xray_last_ips.get(u, h.get("last_ip", "")),
-            "_snap_up": r_up,
-            "_snap_down": r_dn,
+            "_snap_up": next_snap_up,
+            "_snap_down": next_snap_dn,
             "_delta": delta,
             "proto": "vless",
         }

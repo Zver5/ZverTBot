@@ -424,3 +424,82 @@ def test_collect_deduplicates_xray_client_across_inbounds(monkeypatch, tmp_path)
     assert client["uplink"] == 600
     assert client["downlink"] == 700
     assert client["total"] == 1300
+
+
+def test_collect_preserves_xray_snapshot_on_query_failure(monkeypatch, tmp_path):
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "hass/traffic/xray-traffic-collect.py"
+    spec = importlib.util.spec_from_file_location("xray_traffic_collect", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    uuid = "7910ef31-fe3b-4b35-8a8b-b869e61efce8"
+    usage_file = tmp_path / "usage.json"
+    config_file = tmp_path / "config.json"
+
+    usage_file.write_text(
+        json.dumps(
+            {
+                "clients": {
+                    "ZverX": {
+                        "uplink": 500,
+                        "downlink": 700,
+                        "total": 1200,
+                        "_snap_up": 1000,
+                        "_snap_down": 2000,
+                        "proto": "vless",
+                    }
+                }
+            }
+        )
+    )
+
+    config_file.write_text(
+        json.dumps(
+            {
+                "inbounds": [
+                    {
+                        "port": 443,
+                        "protocol": "vless",
+                        "settings": {
+                            "clients": [
+                                {"email": "ZverX", "id": uuid},
+                            ]
+                        },
+                    }
+                ]
+            }
+        )
+    )
+
+    monkeypatch.setattr(module, "OUT", str(usage_file))
+    monkeypatch.setattr(
+        module,
+        "load_xray_config",
+        lambda: json.loads(config_file.read_text()),
+    )
+    monkeypatch.setattr(module, "AWG_USERS_JSON", tmp_path / "awg.json")
+    monkeypatch.setattr(module, "get_xray_last_ips", lambda: {})
+    monkeypatch.setattr(module, "sync_and_archive", lambda data: None)
+
+    def fake_query(name):
+        if name.endswith("uplink"):
+            return 1100
+        if name.endswith("downlink"):
+            return None
+        raise AssertionError(name)
+
+    monkeypatch.setattr(module, "query_xray_stat", fake_query)
+
+    module.collect()
+
+    client = json.loads(usage_file.read_text())["clients"]["ZverX"]
+
+    assert client["uplink"] == 600
+    assert client["downlink"] == 700
+    assert client["total"] == 1300
+    assert client["_snap_up"] == 1100
+    assert client["_snap_down"] == 2000
+    assert client["_delta"] == 100
