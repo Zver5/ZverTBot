@@ -300,14 +300,29 @@ install_xray() {
 
 install_rclone() {
 
-    info "Installing latest rclone"
+    if command -v rclone >/dev/null 2>&1; then
+        if rclone version >/dev/null 2>&1; then
+            RCLONE_VERSION=$(rclone version 2>/dev/null | awk 'NR==1 {print $2}')
+
+            if [ -n "$RCLONE_VERSION" ]; then
+                ok "rclone already installed: $RCLONE_VERSION"
+            else
+                ok "rclone already installed"
+            fi
+            return
+        fi
+
+        warn "rclone binary exists but is not working; reinstalling"
+    else
+        info "Installing rclone"
+    fi
 
     if ! curl -fsSL https://rclone.org/install.sh | bash >/dev/null; then
         fail "rclone installation failed"
     fi
 
-    if ! command -v rclone >/dev/null 2>&1; then
-        fail "rclone installation failed: binary not found"
+    if ! command -v rclone >/dev/null 2>&1 || ! rclone version >/dev/null 2>&1; then
+        fail "rclone installation failed: binary is unavailable"
     fi
 
     RCLONE_VERSION=$(rclone version 2>/dev/null | awk 'NR==1 {print $2}')
