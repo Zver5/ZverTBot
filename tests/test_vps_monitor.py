@@ -9,6 +9,7 @@ from services.vps_monitor import (
     DATA_COLLECTORS,
     OPTIONAL_COMPONENTS,
     MonitorCategory,
+    MonitorFailure,
     MonitorResult,
     MonitorState,
     StateTransition,
@@ -276,6 +277,60 @@ def test_awg_active_and_interface_is_healthy(mock_systemctl):
     assert "awg-quick@awg1" in result.details
     assert "58352" in result.details
     assert mock_run.call_args.args[0] == ["awg", "show", "awg1"]
+
+
+def test_awg_multiple_units_are_all_checked():
+    with patch(
+        "services.vps_monitor._systemctl",
+        side_effect=[
+            completed(
+                "awg-quick@awg0.service enabled\n"
+                "awg-quick@awg1.service enabled\n"
+            ),
+            completed("active\n"),
+            completed("active\n"),
+        ],
+    ) as mock_systemctl, patch(
+        "services.vps_monitor.subprocess.run",
+        side_effect=[
+            completed("interface: awg0\n  listening port: 58352\n"),
+            completed("interface: awg1\n  listening port: 58353\n"),
+        ],
+    ) as mock_run:
+        result = check_awg_service()
+
+    assert result.healthy is True
+    assert "awg-quick@awg0" in result.details
+    assert "awg-quick@awg1" in result.details
+    assert "58352" in result.details
+    assert "58353" in result.details
+    assert mock_systemctl.call_count == 3
+    assert mock_run.call_count == 2
+
+
+def test_awg_one_failed_unit_makes_aggregate_down():
+    with patch(
+        "services.vps_monitor._systemctl",
+        side_effect=[
+            completed(
+                "awg-quick@awg0.service enabled\n"
+                "awg-quick@awg1.service enabled\n"
+            ),
+            completed("active\n"),
+            completed("failed\n"),
+        ],
+    ), patch(
+        "services.vps_monitor.subprocess.run",
+        return_value=completed(
+            "interface: awg0\n  listening port: 58352\n"
+        ),
+    ):
+        result = check_awg_service()
+
+    assert result.healthy is False
+    assert "awg-quick@awg0" in result.details
+    assert "awg-quick@awg1: failed" in result.details
+    assert result.failure == MonitorFailure.SYSTEMD_FAILED
 
 
 @patch("services.vps_monitor._systemctl")

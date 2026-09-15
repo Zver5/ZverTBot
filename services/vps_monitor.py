@@ -243,9 +243,11 @@ def check_xray() -> MonitorResult:
     )
 
 
-def _discover_awg_unit() -> str | None:
-    """Find an installed awg-quick instance without assuming awg0."""
+def _discover_awg_units() -> list[str]:
+    """Find all installed awg-quick instances without assuming awg0."""
     result = _systemctl("list-units", "--all", "awg-quick@*.service")
+    units = []
+
     for line in result.stdout.splitlines():
         unit = line.split()[0] if line.split() else ""
         if (
@@ -253,16 +255,18 @@ def _discover_awg_unit() -> str | None:
             and unit != "awg-quick@.service"
             and unit.endswith(".service")
         ):
-            return unit.removesuffix(".service")
-    return None
+            units.append(unit.removesuffix(".service"))
+
+    return units
 
 
 def check_awg_service(
     unit_name: str | None = None,
 ) -> MonitorResult:
-    """Check AWG systemd unit, interface and configured listening port."""
-    unit_name = unit_name or _discover_awg_unit()
-    if unit_name is None:
+    """Check all AWG systemd units, interfaces and listening ports."""
+    units = [unit_name] if unit_name else _discover_awg_units()
+
+    if not units:
         return MonitorResult(
             name="awg",
             category=MonitorCategory.OPTIONAL,
@@ -270,59 +274,91 @@ def check_awg_service(
             details="AWG service not installed",
         )
 
-    active = _systemctl("is-active", unit_name)
-    if active.stdout.strip() != "active":
+    results = []
+
+    for unit in units:
+        active = _systemctl("is-active", unit)
         state = active.stdout.strip() or "unknown"
-        failure = (
-            MonitorFailure.SYSTEMD_FAILED
-            if state == "failed"
-            else MonitorFailure.SYSTEMD_INACTIVE
+
+        if state != "active":
+            failure = (
+                MonitorFailure.SYSTEMD_FAILED
+                if state == "failed"
+                else MonitorFailure.SYSTEMD_INACTIVE
+            )
+            results.append(
+                MonitorResult(
+                    name="awg",
+                    category=MonitorCategory.OPTIONAL,
+                    healthy=False,
+                    details=f"{unit}: {state}",
+                    failure=failure,
+                )
+            )
+            continue
+
+        show = subprocess.run(
+            ["awg", "show", unit.split("@", 1)[1]],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
         )
+
+        if show.returncode != 0:
+            results.append(
+                MonitorResult(
+                    name="awg",
+                    category=MonitorCategory.OPTIONAL,
+                    healthy=False,
+                    details=f"{unit} interface unavailable",
+                    failure=MonitorFailure.UDP_FAILED,
+                )
+            )
+            continue
+
+        port = None
+        for line in show.stdout.splitlines():
+            if line.strip().startswith("listening port:"):
+                port = line.split(":", 1)[1].strip()
+                break
+
+        if not port:
+            results.append(
+                MonitorResult(
+                    name="awg",
+                    category=MonitorCategory.OPTIONAL,
+                    healthy=False,
+                    details=f"{unit} listening port unavailable",
+                    failure=MonitorFailure.UDP_FAILED,
+                )
+            )
+            continue
+
+        results.append(
+            MonitorResult(
+                name="awg",
+                category=MonitorCategory.OPTIONAL,
+                healthy=True,
+                details=f"{unit} active; UDP {port}",
+            )
+        )
+
+    failures = [result for result in results if not result.healthy]
+    if failures:
         return MonitorResult(
             name="awg",
             category=MonitorCategory.OPTIONAL,
             healthy=False,
-            details=f"{unit_name}: {state}",
-            failure=failure,
-        )
-
-    show = subprocess.run(
-        ["awg", "show", unit_name.split("@", 1)[1]],
-        capture_output=True,
-        text=True,
-        timeout=5,
-        check=False,
-    )
-
-    if show.returncode != 0:
-        return MonitorResult(
-            name="awg",
-            category=MonitorCategory.OPTIONAL,
-            healthy=False,
-            details=f"{unit_name} interface unavailable",
-            failure=MonitorFailure.UDP_FAILED,
-        )
-
-    port = None
-    for line in show.stdout.splitlines():
-        if line.strip().startswith("listening port:"):
-            port = line.split(":", 1)[1].strip()
-            break
-
-    if not port:
-        return MonitorResult(
-            name="awg",
-            category=MonitorCategory.OPTIONAL,
-            healthy=False,
-            details="AWG listening port unavailable",
-            failure=MonitorFailure.UDP_FAILED,
+            details="; ".join(result.details for result in results),
+            failure=failures[0].failure,
         )
 
     return MonitorResult(
         name="awg",
         category=MonitorCategory.OPTIONAL,
         healthy=True,
-        details=f"{unit_name} active; UDP {port}",
+        details="; ".join(result.details for result in results),
     )
 
 
