@@ -5,6 +5,8 @@
 import shutil
 import subprocess
 
+from utils.service_control import get_service_state
+
 
 def _run(cmd: list[str], timeout: int = 5) -> str:
     try:
@@ -49,7 +51,7 @@ def collect_server_health() -> str:
         "stats-http",
         "awg-quick@awg0",
     ]:
-        status = _run(["systemctl", "is-active", service])
+        status = get_service_state(service)
 
         parts.append(f"{service}: {status or 'unknown'}")
 

@@ -2,6 +2,7 @@
 Description=Run VPS stats collector every 3 minutes
 
 [Timer]
+OnBootSec=3min
 OnUnitActiveSec=3min
 Persistent=true
 

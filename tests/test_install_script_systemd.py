@@ -11,6 +11,15 @@ def test_install_script_installs_core_directory():
     assert "*.timer" in INSTALL
 
 
+def test_vps_stats_timer_runs_after_boot():
+    timer = ROOT / "deploy" / "botinstaller" / "systemd" / "core" / "vps-stats.timer"
+    text = timer.read_text()
+
+    assert "OnBootSec=3min" in text
+    assert "OnUnitActiveSec=3min" in text
+    assert "Persistent=true" in text
+
+
 def test_install_script_installs_optional_directory():
     assert "systemd/optional" in INSTALL
     assert "OPTIONAL_DIR" in INSTALL

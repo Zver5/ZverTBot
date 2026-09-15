@@ -29,38 +29,6 @@ def reload_xray():
     restart_service("xray")
 
 
-def validate_xray_config() -> bool:
-    """Проверяет конфигурацию Xray перед перезапуском."""
-    try:
-        result = subprocess.run(
-            [
-                "xray",
-                "run",
-                "-test",
-                "-config",
-                str(XRAY_CONF),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-
-        if result.returncode != 0:
-            logger.error(
-                "xray.config.validation_failed | error=%s",
-                result.stderr.strip(),
-            )
-            return False
-
-        return True
-
-    except Exception as e:
-        logger.error(
-            "xray.config.validation_error | error=%s",
-            e,
-        )
-        return False
-
 
 @client_operation_lock
 def xray_add_user(username: str) -> tuple[bool, str]:

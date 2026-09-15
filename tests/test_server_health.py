@@ -67,11 +67,6 @@ def test_collect_server_health_includes_command_results(monkeypatch):
         ("cat", "/proc/loadavg"): "0.12 0.34 0.56 1/100 12345",
         ("free", "-h"): "Mem: 4Gi 2Gi 2Gi",
         ("df", "-h", "/"): "/dev/vda1 20G 10G 10G 50% /",
-        ("systemctl", "is-active", "xray"): "active",
-        ("systemctl", "is-active", "zvertbot"): "active",
-        ("systemctl", "is-active", "fail2ban"): "active",
-        ("systemctl", "is-active", "stats-http"): "active",
-        ("systemctl", "is-active", "awg-quick@awg0"): "inactive",
         (
             "journalctl",
             "-u",
@@ -100,6 +95,17 @@ def test_collect_server_health_includes_command_results(monkeypatch):
         return values.get(tuple(cmd), "")
 
     monkeypatch.setattr(server_health, "_run", fake_run)
+    monkeypatch.setattr(
+        server_health,
+        "get_service_state",
+        lambda service: {
+            "xray": "active",
+            "zvertbot": "active",
+            "fail2ban": "active",
+            "stats-http": "active",
+            "awg-quick@awg0": "inactive",
+        }[service],
+    )
     monkeypatch.setattr(
         server_health.shutil,
         "which",

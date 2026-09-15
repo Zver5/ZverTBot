@@ -117,42 +117,6 @@ def get_awg_users_map() -> dict[str, str]:
     return result
 
 
-def extract_endpoint_ip(endpoint: str) -> str | None:
-    """
-    Извлекает IP из WireGuard endpoint.
-
-    Поддерживает:
-        1.2.3.4:12345
-        [2001:db8::1]:12345
-        1.2.3.4
-        2001:db8::1
-    """
-    endpoint = endpoint.strip()
-
-    if not endpoint or endpoint == "(none)":
-        return None
-
-    if endpoint.startswith("["):
-        end = endpoint.find("]")
-
-        candidate = endpoint[1:end] if end != -1 else endpoint
-
-    elif endpoint.count(":") == 1:
-        candidate = endpoint.rsplit(":", 1)[0]
-
-    elif endpoint.count(":") > 1:
-        # IPv6 без порта
-        candidate = endpoint
-
-    else:
-        candidate = endpoint
-
-    try:
-        return str(ipaddress.ip_address(candidate))
-    except ValueError:
-        return None
-
-
 def get_awg_peers() -> dict[str, str]:
     """Получает endpoint IP подключённых AWG peers."""
     try:

@@ -39,42 +39,6 @@ def test_reload_xray_calls_restart(monkeypatch):
 
 
 # ==========================================================
-# validate_xray_config
-# ==========================================================
-
-
-def test_validate_xray_config_success(monkeypatch):
-    monkeypatch.setattr(
-        cm.subprocess, "run", lambda *args, **kwargs: Mock(returncode=0, stderr="")
-    )
-
-    assert cm.validate_xray_config() is True
-
-
-def test_validate_xray_config_failed(monkeypatch):
-    monkeypatch.setattr(
-        cm.subprocess,
-        "run",
-        lambda *args, **kwargs: Mock(returncode=1, stderr="bad config"),
-    )
-
-    assert cm.validate_xray_config() is False
-
-
-def test_validate_xray_config_exception(monkeypatch):
-    def fail(*args, **kwargs):
-        raise Exception("xray missing")
-
-    monkeypatch.setattr(cm.subprocess, "run", fail)
-
-    assert cm.validate_xray_config() is False
-
-
-# ==========================================================
-# xray_add_user
-# ==========================================================
-
-
 def test_xray_add_user_not_ready(monkeypatch):
     config = {"inbounds": []}
     uuid_called = []
@@ -168,7 +132,6 @@ def test_xray_add_user_success(monkeypatch):
 
     monkeypatch.setattr(cm, "save_xray_config", lambda cfg: saved.append(cfg))
 
-    monkeypatch.setattr(cm, "validate_xray_config", lambda: True)
 
     monkeypatch.setattr(cm, "reload_xray", lambda: None)
 
@@ -274,7 +237,6 @@ def test_xray_add_user_uuid_command(monkeypatch):
         "save_xray_config",
         lambda cfg: saved.append(cfg),
     )
-    monkeypatch.setattr(cm, "validate_xray_config", lambda: True)
 
     reloaded = []
     monkeypatch.setattr(
