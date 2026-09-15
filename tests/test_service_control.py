@@ -195,16 +195,10 @@ def test_restart_service_detached(mock_popen):
     )
 
 
+@patch("utils.service_control.get_service_state")
 @patch("utils.service_control.subprocess.run")
-def test_restart_service_success(mock_run):
-    restart_result = Mock()
-    restart_result.returncode = 0
-
-    active_result = Mock()
-    active_result.returncode = 0
-    active_result.stdout = "active\n"
-
-    mock_run.side_effect = [restart_result, active_result]
+def test_restart_service_success(mock_run, mock_state):
+    mock_state.return_value = "active"
 
     with (
         patch("utils.service_control.time.sleep") as mock_sleep,
@@ -212,17 +206,12 @@ def test_restart_service_success(mock_run):
     ):
         restart_service("zvertbot", wait=3)
 
-    mock_run.assert_any_call(
+    mock_run.assert_called_once_with(
         ["systemctl", "restart", "zvertbot"],
         check=True,
         timeout=15,
     )
-    mock_run.assert_any_call(
-        ["systemctl", "is-active", "zvertbot"],
-        capture_output=True,
-        text=True,
-        timeout=5,
-    )
+    mock_state.assert_called_once_with("zvertbot")
     mock_sleep.assert_called_once_with(3)
     mock_info.assert_called_once_with(
         "service.restart.completed | service=%s",

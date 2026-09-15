@@ -123,16 +123,9 @@ def restart_service(service: str, wait: int = 2) -> None:
 
         time.sleep(wait)
 
-        status = subprocess.run(
-            ["systemctl", "is-active", service],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
+        state = get_service_state(service)
 
-        state = status.stdout.strip()
-
-        if status.returncode != 0 or state != "active":
+        if state != "active":
             raise RuntimeError(f"{service} не активен после рестарта (state={state})")
 
         logger.info("service.restart.completed | service=%s", service)
