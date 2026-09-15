@@ -14,6 +14,13 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 from services.vps_monitor import MonitorCategory, MonitorState, check_all
+from services.vps_monitor_notifications import (
+    DEFAULT_NOTIFICATION_STATE_FILE,
+    PendingNotification,
+    enqueue_pending_notifications,
+    load_pending_notifications,
+    save_pending_notifications,
+)
 from services.vps_monitor_state import StateUpdate, prepare_results, save_states
 from utils.logger import logger
 
@@ -157,30 +164,82 @@ def _format_update(
     return "\n".join(lines)
 
 
-def notify_updates(
+def _queue_notifications(
     updates: list[StateUpdate],
     categories: dict[str, MonitorCategory],
 ) -> None:
-    """Send notifications for actual state transitions."""
+    """Queue transition notifications before monitor state is persisted."""
     chats = _admin_chats()
+    pending: list[PendingNotification] = []
 
-    if not chats:
+    if not chats and any(
+        update.notify
+        and categories.get(update.name) != MonitorCategory.DATA_COLLECTOR
+        for update in updates
+    ):
         raise RuntimeError("Neither ADMIN_CHATS nor ADMIN_CHAT is configured")
 
     for update in updates:
         if not update.notify:
             continue
 
-        category = categories[update.name]
-
-        # Data collectors are intentionally not alarm sources.
-        if category == MonitorCategory.DATA_COLLECTOR:
+        if categories.get(update.name) == MonitorCategory.DATA_COLLECTOR:
             continue
 
-        message = _format_update(update, category)
+        message = _format_update(update, categories[update.name])
 
         for chat_id in chats:
-            _telegram_send(chat_id, message)
+            pending.append(
+                PendingNotification(
+                    chat_id=chat_id,
+                    service=update.name,
+                    state=update.current,
+                    message=message,
+                )
+            )
+
+    enqueue_pending_notifications(
+        pending,
+        DEFAULT_NOTIFICATION_STATE_FILE,
+    )
+
+
+def _deliver_pending_notifications() -> None:
+    """Deliver queued notifications and retain failures for retry."""
+    pending = load_pending_notifications(
+        DEFAULT_NOTIFICATION_STATE_FILE,
+    )
+
+    if not pending:
+        return
+
+    remaining = list(pending)
+
+    for item in pending:
+        try:
+            _telegram_send(item.chat_id, item.message)
+        except Exception:
+            logger.exception(
+                "Telegram notification failed | service=%s | chat=%s",
+                item.service,
+                item.chat_id,
+            )
+            continue
+
+        remaining.remove(item)
+        save_pending_notifications(
+            remaining,
+            DEFAULT_NOTIFICATION_STATE_FILE,
+        )
+
+
+def notify_updates(
+    updates: list[StateUpdate],
+    categories: dict[str, MonitorCategory],
+) -> None:
+    """Queue new notifications and retry previously failed deliveries."""
+    _queue_notifications(updates, categories)
+    _deliver_pending_notifications()
 
 
 def run_once() -> None:
@@ -201,8 +260,9 @@ def run_once() -> None:
                 update.details or "none",
             )
 
+    _queue_notifications(updates, categories)
     save_states(states)
-    notify_updates(updates, categories)
+    _deliver_pending_notifications()
 
 
 def main() -> None:

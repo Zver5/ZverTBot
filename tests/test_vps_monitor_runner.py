@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import patch
 
 from services.vps_monitor import (
@@ -6,6 +7,7 @@ from services.vps_monitor import (
     MonitorResult,
     MonitorState,
 )
+from services.vps_monitor_notifications import load_pending_notifications
 from services.vps_monitor_runner import (
     _admin_chats,
     _format_update,
@@ -209,7 +211,33 @@ def test_details_are_html_escaped():
     assert "<danger>" not in text
 
 
-def test_non_transition_is_not_sent(monkeypatch):
+def test_notification_requires_admin_chat(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ADMIN_CHAT", raising=False)
+    monkeypatch.delenv("ADMIN_CHATS", raising=False)
+
+    with patch("services.vps_monitor_runner._telegram_send") as send:
+        try:
+            notify_updates(
+                [
+                    update(
+                        "zvertbot",
+                        MonitorState.UP,
+                        MonitorState.DOWN,
+                    )
+                ],
+                {"zvertbot": MonitorCategory.CRITICAL},
+            )
+        except RuntimeError as exc:
+            assert str(exc) == "Neither ADMIN_CHATS nor ADMIN_CHAT is configured"
+        else:
+            raise AssertionError("notify_updates() must require an admin chat")
+
+    send.assert_not_called()
+
+
+def test_non_transition_is_not_sent(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ADMIN_CHAT", "123")
 
     with patch("services.vps_monitor_runner._telegram_send") as send:
@@ -228,7 +256,8 @@ def test_non_transition_is_not_sent(monkeypatch):
     send.assert_not_called()
 
 
-def test_down_transition_is_sent(monkeypatch):
+def test_down_transition_is_sent(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ADMIN_CHAT", "123")
 
     with patch("services.vps_monitor_runner._telegram_send") as send:
@@ -248,7 +277,8 @@ def test_down_transition_is_sent(monkeypatch):
     assert "🤖 <b>Сервис: ZverTBot</b>" in send.call_args.args[1]
 
 
-def test_recovery_transition_is_sent(monkeypatch):
+def test_recovery_transition_is_sent(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ADMIN_CHAT", "123")
 
     with patch("services.vps_monitor_runner._telegram_send") as send:
@@ -268,7 +298,8 @@ def test_recovery_transition_is_sent(monkeypatch):
     assert "🟢 Бэкап снова выполняется успешно" in send.call_args.args[1]
 
 
-def test_multiple_admin_chats_receive_same_event(monkeypatch):
+def test_multiple_admin_chats_receive_same_event(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ADMIN_CHATS", "111,222")
 
     with patch("services.vps_monitor_runner._telegram_send") as send:
@@ -290,7 +321,8 @@ def test_multiple_admin_chats_receive_same_event(monkeypatch):
     }
 
 
-def test_data_collectors_are_not_alarm_sources(monkeypatch):
+def test_data_collectors_are_not_alarm_sources(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ADMIN_CHAT", "123")
 
     with patch("services.vps_monitor_runner._telegram_send") as send:
@@ -335,10 +367,17 @@ def test_run_once_logs_state_transition():
             "services.vps_monitor_runner.prepare_results",
             return_value=(updates, {"stats-http": MonitorState.DOWN}),
         ):
-            with patch("services.vps_monitor_runner.notify_updates"):
-                with patch("services.vps_monitor_runner.save_states"):
-                    with patch("services.vps_monitor_runner.logger.info") as log_info:
-                        run_once()
+            with patch(
+                "services.vps_monitor_runner._queue_notifications"
+            ):
+                with patch(
+                    "services.vps_monitor_runner._deliver_pending_notifications"
+                ):
+                    with patch("services.vps_monitor_runner.save_states"):
+                        with patch(
+                            "services.vps_monitor_runner.logger.info"
+                        ) as log_info:
+                            run_once()
 
     log_info.assert_called_once_with(
         "vps_monitor.state_changed | service=%s | %s -> %s | details=%s",
@@ -349,7 +388,9 @@ def test_run_once_logs_state_transition():
     )
 
 
-def test_run_once_checks_processes_and_notifies(monkeypatch):
+def test_run_once_checks_processes_and_notifies(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+
     results = [
         MonitorResult(
             name="zvertbot",
@@ -374,20 +415,30 @@ def test_run_once_checks_processes_and_notifies(monkeypatch):
             "services.vps_monitor_runner.prepare_results",
             return_value=(updates, {"zvertbot": MonitorState.DOWN}),
         ) as process:
-            with patch("services.vps_monitor_runner.notify_updates") as notify:
-                with patch("services.vps_monitor_runner.save_states") as save:
-                    run_once()
+            with patch(
+                "services.vps_monitor_runner._queue_notifications"
+            ) as queue:
+                with patch(
+                    "services.vps_monitor_runner._deliver_pending_notifications"
+                ) as deliver:
+                    with patch(
+                        "services.vps_monitor_runner.save_states"
+                    ) as save:
+                        run_once()
 
     check.assert_called_once()
     process.assert_called_once_with(results)
-    notify.assert_called_once_with(
+    queue.assert_called_once_with(
         updates,
         {"zvertbot": MonitorCategory.CRITICAL},
     )
     save.assert_called_once_with({"zvertbot": MonitorState.DOWN})
+    deliver.assert_called_once()
 
 
-def test_run_once_saves_state_before_notification_failure():
+def test_run_once_queues_before_state_and_delivery(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+
     results = [
         MonitorResult(
             name="zvertbot",
@@ -406,11 +457,150 @@ def test_run_once_saves_state_before_notification_failure():
 
     events = []
 
+    def queue_side_effect(updates, categories):
+        events.append(("queue", updates, categories))
+
     def save_states_side_effect(states):
         events.append(("save", states))
 
-    def notify_updates_side_effect(updates, categories):
-        events.append(("notify", updates, categories))
+    def deliver_side_effect():
+        events.append(("deliver",))
+
+    with patch(
+        "services.vps_monitor_runner.check_all",
+        return_value=results,
+    ):
+        with patch(
+            "services.vps_monitor_runner.prepare_results",
+            return_value=(updates, {"zvertbot": MonitorState.DOWN}),
+        ):
+            with patch(
+                "services.vps_monitor_runner._queue_notifications",
+                side_effect=queue_side_effect,
+            ):
+                with patch(
+                    "services.vps_monitor_runner.save_states",
+                    side_effect=save_states_side_effect,
+                ):
+                    with patch(
+                        "services.vps_monitor_runner._deliver_pending_notifications",
+                        side_effect=deliver_side_effect,
+                    ):
+                        run_once()
+
+    assert [event[0] for event in events] == [
+        "queue",
+        "save",
+        "deliver",
+    ]
+
+
+def test_failed_chat_remains_pending_and_is_retried(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ADMIN_CHATS", "111,222")
+
+    with patch(
+        "services.vps_monitor_runner._telegram_send",
+        side_effect=[None, RuntimeError("Telegram unavailable")],
+    ):
+        notify_updates(
+            [
+                update(
+                    "zvertbot",
+                    MonitorState.UP,
+                    MonitorState.DOWN,
+                )
+            ],
+            {"zvertbot": MonitorCategory.CRITICAL},
+        )
+
+    pending = load_pending_notifications()
+
+    assert len(pending) == 1
+    assert pending[0].chat_id == "222"
+    assert pending[0].service == "zvertbot"
+    assert pending[0].state == MonitorState.DOWN
+
+    with patch("services.vps_monitor_runner._telegram_send") as send:
+        notify_updates([], {})
+
+    send.assert_called_once_with("222", pending[0].message)
+    assert load_pending_notifications() == []
+
+
+def test_recovery_notification_is_independent_from_down_delivery(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ADMIN_CHAT", "111")
+
+    with patch(
+        "services.vps_monitor_runner._telegram_send",
+        side_effect=RuntimeError("Telegram unavailable"),
+    ):
+        notify_updates(
+            [
+                update(
+                    "zvertbot",
+                    MonitorState.UP,
+                    MonitorState.DOWN,
+                )
+            ],
+            {"zvertbot": MonitorCategory.CRITICAL},
+        )
+
+    with patch("services.vps_monitor_runner._telegram_send") as send:
+        notify_updates(
+            [
+                update(
+                    "zvertbot",
+                    MonitorState.DOWN,
+                    MonitorState.UP,
+                )
+            ],
+            {"zvertbot": MonitorCategory.CRITICAL},
+        )
+
+    assert send.call_count == 2
+    assert [call.args[0] for call in send.call_args_list] == [
+        "111",
+        "111",
+    ]
+
+
+def test_telegram_failure_does_not_change_state_logic(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    results = [
+        MonitorResult(
+            name="zvertbot",
+            category=MonitorCategory.CRITICAL,
+            healthy=False,
+        )
+    ]
+
+    updates = [
+        update(
+            "zvertbot",
+            MonitorState.UP,
+            MonitorState.DOWN,
+        )
+    ]
+
+    events = []
+
+    def queue_side_effect(updates, categories):
+        events.append(("queue", updates, categories))
+
+    def save_states_side_effect(states):
+        events.append(("save", states))
+
+    def deliver_side_effect():
+        events.append(("deliver",))
         raise RuntimeError("Telegram unavailable")
 
     with patch(
@@ -422,22 +612,28 @@ def test_run_once_saves_state_before_notification_failure():
             return_value=(updates, {"zvertbot": MonitorState.DOWN}),
         ):
             with patch(
-                "services.vps_monitor_runner.notify_updates",
-                side_effect=notify_updates_side_effect,
+                "services.vps_monitor_runner._queue_notifications",
+                side_effect=queue_side_effect,
             ):
                 with patch(
                     "services.vps_monitor_runner.save_states",
                     side_effect=save_states_side_effect,
                 ):
-                    try:
-                        run_once()
-                    except RuntimeError:
-                        pass
+                    with patch(
+                        "services.vps_monitor_runner._deliver_pending_notifications",
+                        side_effect=deliver_side_effect,
+                    ):
+                        try:
+                            run_once()
+                        except RuntimeError:
+                            pass
 
-    assert events[0] == ("save", {"zvertbot": MonitorState.DOWN})
-    assert events[1][0] == "notify"
-
-
-def test_telegram_failure_does_not_change_state_logic():
-    assert MonitorState.DOWN.value == "down"
-    assert MonitorState.UP.value == "up"
+    assert [event[0] for event in events] == [
+        "queue",
+        "save",
+        "deliver",
+    ]
+    assert events[1] == (
+        "save",
+        {"zvertbot": MonitorState.DOWN},
+    )

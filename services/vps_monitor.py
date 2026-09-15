@@ -245,11 +245,15 @@ def check_xray() -> MonitorResult:
 
 def _discover_awg_unit() -> str | None:
     """Find an installed awg-quick instance without assuming awg0."""
-    result = _systemctl("list-unit-files", "awg-quick@*.service")
+    result = _systemctl("list-units", "--all", "awg-quick@*.service")
     for line in result.stdout.splitlines():
         unit = line.split()[0] if line.split() else ""
-        if unit.startswith("awg-quick@") and unit.endswith(".service"):
-            return unit[:-8]
+        if (
+            unit.startswith("awg-quick@")
+            and unit != "awg-quick@.service"
+            and unit.endswith(".service")
+        ):
+            return unit.removesuffix(".service")
     return None
 
 
