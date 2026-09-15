@@ -140,12 +140,14 @@ def test_client_stats_awg_online(monkeypatch):
         st, "get_client_traffic", lambda x: {"uplink": 1, "downlink": 2, "total": 3}
     )
 
+    peer = Mock(
+        allowed_ip="10.0.0.2",
+        latest_handshake="today",
+    )
     monkeypatch.setattr(
-        st.subprocess,
-        "run",
-        lambda *a, **kw: Mock(
-            stdout=("peer\nallowed ips: 10.0.0.2\nlatest handshake: today")
-        ),
+        st,
+        "get_runtime_peers",
+        lambda: {"PUBKEY": peer},
     )
 
     monkeypatch.setattr(st, "fmt_traffic", lambda x: str(x))

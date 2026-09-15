@@ -41,7 +41,11 @@ def test_awg_show_exception(monkeypatch):
         st, "get_client_traffic", lambda x: {"uplink": 0, "downlink": 0, "total": 0}
     )
 
-    monkeypatch.setattr(st.subprocess, "run", Mock(side_effect=Exception("awg fail")))
+    monkeypatch.setattr(
+        st,
+        "get_runtime_peers",
+        Mock(side_effect=Exception("awg fail")),
+    )
 
     text = st.get_client_stats_text("user", "awg")
 

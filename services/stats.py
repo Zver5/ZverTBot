@@ -4,12 +4,11 @@ services/stats.py
 Функции: статистика бота, статистика клиента, статус VPS.
 """
 
-import subprocess
-
 from config import BOT_NAME, BOT_VERSION
 from core.navigation import NAV_BACK_CALLBACK, NAV_HOME_CALLBACK
 from data.storage import load_awg_registry, load_stats
 from data.traffic import get_client_traffic, load_usage
+from services.awg.runtime import get_runtime_peers
 from services.vps_status_source import load_prepared_vps_payload
 from utils.helpers import fmt_traffic
 from utils.logger import logger
@@ -196,22 +195,13 @@ def get_client_stats_text(username, proto):
         handshake = "Не в сети"
         is_online = False
         try:
-            out = subprocess.run(
-                ["awg", "show", "awg0"],
-                capture_output=True,
-                text=True,
-            ).stdout
-            lines_out = out.split(NL)
-            for i, line in enumerate(lines_out):
-                if ip in line and "allowed ips" in line:
-                    for j in range(i, min(i + 5, len(lines_out))):
-                        current_line = lines_out[j].strip()
-                        if "latest handshake:" in current_line:
-                            val = current_line.split(":")[1].strip()
-                            if val:
-                                handshake = val
-                                is_online = True
-                                break
+            runtime_peers = get_runtime_peers()
+            for peer in runtime_peers.values():
+                if peer.allowed_ip == ip:
+                    if peer.latest_handshake and peer.latest_handshake != "never":
+                        handshake = peer.latest_handshake
+                        is_online = True
+                    break
         except Exception as e:
             logger.exception(
                 "stats.client.awg_status_failed | username=%s | error=%s",

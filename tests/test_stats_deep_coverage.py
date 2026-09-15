@@ -195,8 +195,8 @@ def test_get_client_stats_text_logs_standardized_awg_error(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        st.subprocess,
-        "run",
+        st,
+        "get_runtime_peers",
         Mock(side_effect=error),
     )
 
