@@ -1,3 +1,4 @@
+from multiprocessing import Process, Queue
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,10 +12,70 @@ from services.vps_monitor_notifications import load_pending_notifications
 from services.vps_monitor_runner import (
     _admin_chats,
     _format_update,
+    acquire_monitor_lock,
     notify_updates,
     run_once,
 )
 from services.vps_monitor_state import StateUpdate
+
+
+def _try_monitor_lock(lock_path: str, result: Queue) -> None:
+    lock_file = acquire_monitor_lock(lock_path)
+    result.put(lock_file is not None)
+    if lock_file is not None:
+        lock_file.close()
+
+
+def test_monitor_lock_can_be_acquired(tmp_path: Path):
+    lock_path = tmp_path / "monitor.lock"
+
+    lock_file = acquire_monitor_lock(str(lock_path))
+
+    assert lock_file is not None
+    lock_file.close()
+
+
+def test_monitor_lock_is_released_for_next_process(tmp_path: Path):
+    lock_path = tmp_path / "monitor.lock"
+    lock_file = acquire_monitor_lock(str(lock_path))
+    assert lock_file is not None
+    lock_file.close()
+
+    result = Queue()
+    process = Process(
+        target=_try_monitor_lock,
+        args=(str(lock_path), result),
+    )
+
+    process.start()
+    process.join(timeout=5)
+
+    assert process.exitcode == 0
+    assert result.get(timeout=2) is True
+
+
+def test_monitor_lock_blocks_second_process(tmp_path: Path):
+    lock_path = tmp_path / "monitor.lock"
+    lock_file = acquire_monitor_lock(str(lock_path))
+    assert lock_file is not None
+
+    result = Queue()
+    process = Process(
+        target=_try_monitor_lock,
+        args=(str(lock_path), result),
+    )
+
+    try:
+        process.start()
+        process.join(timeout=5)
+
+        assert process.exitcode == 0
+        assert result.get(timeout=2) is False
+    finally:
+        lock_file.close()
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=2)
 
 
 def update(

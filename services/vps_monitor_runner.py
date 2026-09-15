@@ -5,6 +5,8 @@ It performs VPS checks, persists monitor state, and sends Telegram notifications
 only when a component changes state.
 """
 
+import errno
+import fcntl
 import html
 import os
 from datetime import datetime
@@ -25,6 +27,22 @@ from services.vps_monitor_state import StateUpdate, prepare_results, save_states
 from utils.logger import logger
 
 POLL_INTERVAL_SECONDS = 60
+MONITOR_LOCK_PATH = "/run/zvertbot-vps-monitor.lock"
+
+
+def acquire_monitor_lock(lock_path: str = MONITOR_LOCK_PATH):
+    """Acquire the process-wide monitor lock."""
+    lock_file = open(lock_path, "a+", encoding="utf-8")
+    try:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        lock_file.close()
+        if exc.errno in (errno.EACCES, errno.EAGAIN):
+            return None
+        raise
+    return lock_file
+
+
 TELEGRAM_API = "https://api.telegram.org"
 
 
@@ -267,16 +285,25 @@ def run_once() -> None:
 
 def main() -> None:
     """Run monitoring continuously."""
-    while True:
-        try:
-            run_once()
-        except Exception as exc:
-            print(
-                f"vps-monitor cycle failed: {exc}",
-                flush=True,
-            )
+    lock_file = acquire_monitor_lock()
+    if lock_file is None:
+        print("vps-monitor already running; exiting", flush=True)
+        return
 
-        sleep(POLL_INTERVAL_SECONDS)
+    try:
+        while True:
+            try:
+                run_once()
+            except Exception as exc:
+                print(
+                    f"vps-monitor cycle failed: {exc}",
+                    flush=True,
+                )
+
+            sleep(POLL_INTERVAL_SECONDS)
+    finally:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        lock_file.close()
 
 
 if __name__ == "__main__":
