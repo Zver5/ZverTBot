@@ -67,9 +67,9 @@ Home Assistant не обращается напрямую к внутренни�
 /vps-status.json
 ```
 
-Получение выполняется через SSH или существующий SSH-туннель.
+Получение выполняется через существующий локальный SSH-туннель либо через Direct SSH.
 
-Отдельный внешний HTTP-порт для интеграции не требуется.
+Отдельный внешний HTTP-порт для интеграции не требуется. На VPS endpoint VPS Status доступен локально, например через `http://127.0.0.1:8080/vps-status.json`, а Home Assistant получает данные через SSH-туннель или SSH-доступ.
 
 ### Home Assistant Integration
 
@@ -84,7 +84,7 @@ ZverTBot-ha/
 В Home Assistant компонент устанавливается в:
 
 ```text
-/config/custom_components/zvertbot/
+/config/custom_components/zvertbotvps/
 ```
 
 ---
@@ -122,7 +122,7 @@ https://github.com/Zver5/ZverTBot-ha
 После установки компонент должен находиться в:
 
 ```text
-/config/custom_components/zvertbot/
+/config/custom_components/zvertbotvps/
 ```
 
 После установки перезапустите Home Assistant.
@@ -132,13 +132,13 @@ https://github.com/Zver5/ZverTBot-ha
 Скопируйте каталог:
 
 ```text
-custom_components/zvertbot/
+custom_components/zvertbotvps/
 ```
 
 из репозитория интеграции в:
 
 ```text
-/config/custom_components/zvertbot/
+/config/custom_components/zvertbotvps/
 ```
 
 После копирования перезапустите Home Assistant.
@@ -167,11 +167,17 @@ ZverTBot
 
 Используется, если Home Assistant уже имеет настроенный SSH-туннель до VPS.
 
-Интеграция использует существующий канал вместо создания отдельного внешнего подключения.
+Интеграция обращается к локальному endpoint VPS Status через существующий туннель, например:
+
+```text
+http://127.0.0.1:8080/vps-status.json
+```
+
+Отдельное SSH-подключение для интеграции при этом не создаётся.
 
 ### 5.2. Direct SSH
 
-При выборе Direct SSH интеграция подключается непосредственно к VPS.
+При выборе Direct SSH интеграция подключается непосредственно к VPS по SSH.
 
 Необходимо указать:
 
@@ -179,6 +185,8 @@ ZverTBot
 * SSH-порт;
 * SSH-пользователя;
 * SSH-ключ.
+
+Интеграция получает VPS Status через SSH и не требует открытия HTTP-порта VPS для Home Assistant.
 
 После ввода параметров интеграция проверяет подключение и получает VPS Status.
 
@@ -366,7 +374,7 @@ Home Assistant Integration развивается независимо от ос
 При обновлении через HACS или вручную обновляется только:
 
 ```text
-custom_components/zvertbot/
+custom_components/zvertbotvps/
 ```
 
 Настройки подключения хранятся в Home Assistant.
