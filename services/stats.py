@@ -112,6 +112,9 @@ def get_bot_stats_text():
         "weekly_report": "📊 Недельный отчёт",
         "bot_stats": "📈 Статистика бота",
         "add_vless": "➕ Создать VLESS",
+        "edit_client_menu": "✏️ Меню редактирования клиента",
+        "list_awg": "🛡️ Список AWG",
+        "list_vless": "⚡ Список VLESS",
         "add_awg": "➕ Создать AWG",
         "confirm_cleanup": "🧹 Очистка диска",
         "exec_cleanup": "🧹 Выполнить очистку",
@@ -168,7 +171,23 @@ def get_bot_stats_text():
         text += f"🔢 *Всего команд:* {BT}{total}{BT}{NL}"
         text += f"🏆 *Топ-10 команд:*{NL}"
         for i, (cmd, count) in enumerate(sorted_commands, 1):
-            cmd_display = CMD_NAMES.get(cmd, cmd.replace("_", " ").title())
+            cmd_display = CMD_NAMES.get(cmd)
+
+            if cmd_display is None:
+                dynamic_prefixes = (
+                    ("ssh_delete_confirm_", "🔐 Подтверждение удаления SSH-ключа"),
+                    ("ssh_delete_final_", "🗑️ Удаление SSH-ключа"),
+                    ("confirm_del:", "🗑️ Подтверждение удаления клиента"),
+                    ("client:account:", "👤 Аккаунт клиента"),
+                )
+
+                for prefix, label in dynamic_prefixes:
+                    if cmd.startswith(prefix):
+                        cmd_display = label
+                        break
+
+            if cmd_display is None:
+                cmd_display = cmd.replace("_", " ").title()
             percent = (count / total * 100) if total > 0 else 0
             text += f"{i}. {cmd_display} — {count} ({percent:.1f}%){NL}"
         return text
