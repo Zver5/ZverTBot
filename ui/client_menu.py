@@ -1,6 +1,7 @@
 from data.storage import load_client_bindings
 from services.client_service import get_client_protocol, get_users_list
 from ui.keyboards import client_account_kb, client_accounts_kb
+from utils.helpers import escape_md
 
 CLIENT_ACCOUNT_PREFIX = "client:account:"
 CLIENT_STATS_PREFIX = "client:stats:"
@@ -32,7 +33,7 @@ def get_client_menu(chat_id):
         if proto is not None:
             return (
                 client_account_kb(username, proto),
-                f"👋 Привет, *{username}*!\nВыберите действие:",
+                f"👋 Привет, *{escape_md(username)}*!\nВыберите действие:",
                 True,
             )
 
@@ -55,6 +56,6 @@ def get_client_account_screen(username):
 
     return (
         client_account_kb(username, proto),
-        f"👤 Аккаунт: *{username}*\n\nВыберите действие:",
+        f"👤 Аккаунт: *{escape_md(username)}*\n\nВыберите действие:",
         True,
     )

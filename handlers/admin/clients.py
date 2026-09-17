@@ -65,7 +65,7 @@ def handle_lists_delete_callback(bot, cid, call, data):
         bot.edit_message_text(
             (
                 f"⚠️ *Вы уверены, что хотите безвозвратно удалить клиента?*\n"
-                f"👤 Имя: `{escape_md(username)}`\n"
+                f"👤 Имя: `{username}`\n"
                 f"📡 Протокол: {proto.upper()}\n"
                 "❗ Это действие удалит конфигурацию и обнулит статистику."
             ),
@@ -89,7 +89,7 @@ def handle_lists_delete_callback(bot, cid, call, data):
                 log_action("УДАЛЕНИЕ", username, "SUCCESS", f"Protocol: {proto}")
 
                 bot.edit_message_text(
-                    f"✅ `{escape_md(username)}` успешно удалён",
+                    f"✅ `{username}` успешно удалён",
                     cid,
                     call.message.message_id,
                     parse_mode="Markdown",
@@ -104,7 +104,7 @@ def handle_lists_delete_callback(bot, cid, call, data):
                 )
 
         bot.edit_message_text(
-            f"⏳ Удаляю клиента `{escape_md(username)}`...",
+            f"⏳ Удаляю клиента `{username}`...",
             cid,
             call.message.message_id,
             parse_mode="Markdown",
@@ -386,7 +386,7 @@ def process_rename_menu(message):
     users_vless = get_users_list("vless")
     users_awg = get_users_list("awg")
     if old_name not in users_vless and old_name not in users_awg:
-        error = f"❌ Клиент `{escape_md(old_name)}` не найден"
+        error = f"❌ Клиент `{old_name}` не найден"
         if input_message_id is not None:
             _render_rename_screen(bot, cid, input_message_id, error)
         else:
@@ -396,7 +396,7 @@ def process_rename_menu(message):
     if any(new_name.lower() == u.lower() for u in users_vless) or any(
         new_name.lower() == u.lower() for u in users_awg
     ):
-        error = f"❌ Имя `{escape_md(new_name)}` уже занято (без учёта регистра)"
+        error = f"❌ Имя `{new_name}` уже занято (без учёта регистра)"
         if input_message_id is not None:
             _render_rename_screen(bot, cid, input_message_id, error)
         else:
@@ -408,7 +408,7 @@ def process_rename_menu(message):
 
     progress_msg = bot.send_message(
         cid,
-        f"🔄 Переименовываю `{escape_md(old_name)}` → `{escape_md(new_name)}`...",
+        f"🔄 Переименовываю `{old_name}` → `{new_name}`...",
         parse_mode="Markdown",
     )
 
@@ -531,7 +531,7 @@ def handle_qr_config_callback(bot, cid, call, data):
         if proto not in ("vless", "awg"):
             return CallbackResponse("❌ Неизвестный протокол")
 
-        callback_response = CallbackResponse(f"📤 Отправляю для {escape_md(username)}")
+        callback_response = CallbackResponse(f"📤 Отправляю для {username}")
 
         send_qr_or_conf(
             bot,
@@ -557,7 +557,7 @@ def handle_qr_config_callback(bot, cid, call, data):
             return CallbackResponse("❌ Неизвестный протокол")
 
         callback_response = CallbackResponse(
-            f"📄 Отправляю конфиг для {escape_md(username)}"
+            f"📄 Отправляю конфиг для {username}"
         )
 
         send_qr_or_conf(

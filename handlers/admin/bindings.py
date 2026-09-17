@@ -311,7 +311,7 @@ def handle_bindings_part1_callback(bot, cid, call, data):
         safe_send_message(
             bot,
             target_cid,
-            f"✅ Аккаунт `{escape_md(username)}` успешно привязан!",
+            f"✅ Аккаунт `{username}` успешно привязан!",
             parse_mode="Markdown",
         )
 
@@ -448,7 +448,7 @@ def handle_bindings_part3_callback(bot, cid, call, data):
             safe_send_message(
                 bot,
                 p_cid,
-                f"❌ Ваш аккаунт `{escape_md(username)}` отвязан администратором.",
+                f"❌ Ваш аккаунт `{username}` отвязан администратором.",
                 parse_mode="Markdown",
             )
         else:

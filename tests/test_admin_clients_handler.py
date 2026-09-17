@@ -43,7 +43,7 @@ def mock_call():
 
 
 class TestClientsMarkdownEscaping:
-    def test_delete_confirmation_escapes_username(self, mock_bot, mock_call):
+    def test_delete_confirmation_preserves_username(self, mock_bot, mock_call):
         handle_lists_delete_callback(
             mock_bot,
             111222,
@@ -52,9 +52,9 @@ class TestClientsMarkdownEscaping:
         )
 
         text = mock_bot.edit_message_text.call_args.args[0]
-        assert "`user\\_test`" in text
+        assert "`user_test`" in text
 
-    def test_delete_progress_escapes_username(self, mock_bot, mock_call):
+    def test_delete_progress_preserves_username(self, mock_bot, mock_call):
         with patch("handlers.admin.clients.threading.Thread"):
             handle_lists_delete_callback(
                 mock_bot,
@@ -64,9 +64,9 @@ class TestClientsMarkdownEscaping:
             )
 
         text = mock_bot.edit_message_text.call_args.args[0]
-        assert "`user\\_test`" in text
+        assert "`user_test`" in text
 
-    def test_rename_progress_escapes_names(self, mock_bot):
+    def test_rename_progress_preserves_names(self, mock_bot):
         message = Mock()
         message.chat.id = 111222
         message.text = "old_test new_test"
@@ -87,8 +87,8 @@ class TestClientsMarkdownEscaping:
             clients_module.process_rename_menu(message)
 
         text = mock_bot.send_message.call_args_list[0].args[1]
-        assert "`old\\_test`" in text
-        assert "`new\\_test`" in text
+        assert "`old_test`" in text
+        assert "`new_test`" in text
 
 
 class TestHandleListsDeleteCallback:

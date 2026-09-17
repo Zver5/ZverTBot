@@ -519,7 +519,7 @@ class TestBindingsMarkdownEscaping:
         assert "client\\_one, client.two" in text
         assert "2026-08-25 12:34\\_test" in text
 
-    def test_bind_notification_escapes_username(self, mock_bot, mock_call):
+    def test_bind_notification_preserves_username(self, mock_bot, mock_call):
         with (
             patch(
                 "handlers.admin.bindings.get_all_client_bindings",
@@ -548,11 +548,11 @@ class TestBindingsMarkdownEscaping:
         assert result.show_alert is False
         mock_bot.send_message.assert_called_once_with(
             "123",
-            "✅ Аккаунт `client\\_test` успешно привязан!",
+            "✅ Аккаунт `client_test` успешно привязан!",
             parse_mode="Markdown",
         )
 
-    def test_unbind_notification_escapes_username(self, mock_bot, mock_call):
+    def test_unbind_notification_preserves_username(self, mock_bot, mock_call):
         with (
             patch(
                 "handlers.admin.bindings.remove_client_binding",
@@ -573,7 +573,7 @@ class TestBindingsMarkdownEscaping:
         assert result is not False
         mock_bot.send_message.assert_called_once_with(
             "123",
-            "❌ Ваш аккаунт `client\\_test` отвязан администратором.",
+            "❌ Ваш аккаунт `client_test` отвязан администратором.",
             parse_mode="Markdown",
         )
 

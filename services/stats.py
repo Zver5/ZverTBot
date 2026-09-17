@@ -10,7 +10,7 @@ from data.storage import load_awg_registry, load_stats
 from data.traffic import get_client_traffic, load_usage
 from services.awg.runtime import get_runtime_peers
 from services.vps_status_source import load_prepared_vps_payload
-from utils.helpers import fmt_traffic
+from utils.helpers import escape_md, fmt_traffic
 from utils.logger import logger
 
 
@@ -229,7 +229,7 @@ def get_client_stats_text(username, proto):
             )
         if is_online:
             return (
-                f"📊 *Статистика: {username}*{NL}"
+                f"📊 *Статистика: {escape_md(username)}*{NL}"
                 f"🔹 Статус: ✅ Активен{NL}"
                 f"🔹 IP: {BT}{ip}{BT}{NL}"
                 f"🔹 Рукопожатие: {BT}{handshake}{BT}{NL}"
@@ -239,7 +239,7 @@ def get_client_stats_text(username, proto):
             )
         else:
             return (
-                f"📊 *Статистика: {username}*{NL}"
+                f"📊 *Статистика: {escape_md(username)}*{NL}"
                 f"🔹 Статус: ⚫ Оффлайн{NL}"
                 f"🔹 IP: {BT}{ip}{BT}{NL}"
                 f"⬇️ Получено: {BT}{fmt_traffic(down)}{BT}{NL}"
@@ -257,7 +257,7 @@ def get_client_stats_text(username, proto):
         down = client.get("downlink", 0)
         total = client.get("total", 0)
         return (
-            f"📊 *Статистика: {username}*{NL}"
+            f"📊 *Статистика: {escape_md(username)}*{NL}"
             f"⬆️ Отправлено: {BT}{fmt_traffic(up)}{BT}{NL}"
             f"⬇️ Получено: {BT}{fmt_traffic(down)}{BT}{NL}"
             f"🔹 Итого: {BT}{fmt_traffic(total)}{BT}"
