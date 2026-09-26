@@ -11,8 +11,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 INSTALL_DIR="/opt/ZverTBot"
 
-# Папка, откуда запущен install.sh
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${INSTALL_DIR}/.env"
 SYSTEMD_DIR="/etc/systemd/system"
 
@@ -121,17 +119,71 @@ check_network() {
 
 install_packages() {
 
-    info "Checking dpkg lock"
+    info "Checking package manager lock"
 
-    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-        warn "Waiting for unattended-upgrades to finish..."
-        sleep 10
+    LOCK_TIMEOUT=180
+    LOCK_STARTED=$(date +%s)
+    LOCK_LAST_REPORT=-30
+
+    while true; do
+        LOCK_PIDS=""
+
+        for lock_file in /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock; do
+            if [ -e "$lock_file" ]; then
+                PIDS=$(fuser "$lock_file" 2>/dev/null || true)
+                if [ -n "$PIDS" ]; then
+                    LOCK_PIDS="$LOCK_PIDS $PIDS"
+                fi
+            fi
+        done
+
+        LOCK_PIDS=$(printf '%s\n' "$LOCK_PIDS" | xargs -r -n1 | sort -nu | xargs || true)
+
+        if [ -z "$LOCK_PIDS" ]; then
+            break
+        fi
+
+        NOW=$(date +%s)
+        ELAPSED=$((NOW - LOCK_STARTED))
+
+        if [ "$((ELAPSED - LOCK_LAST_REPORT))" -ge 30 ]; then
+            LOCK_LAST_REPORT=$ELAPSED
+
+            LOCK_DETAILS=""
+            for pid in $LOCK_PIDS; do
+                if [ -r "/proc/$pid/comm" ]; then
+                    NAME=$(cat "/proc/$pid/comm")
+                    LOCK_DETAILS="${LOCK_DETAILS} ${NAME} (PID ${pid});"
+                fi
+            done
+
+            info "Package manager is busy:${LOCK_DETAILS}"
+            info "Waiting for package manager... elapsed: ${ELAPSED}s"
+        fi
+
+        if [ "$ELAPSED" -ge "$LOCK_TIMEOUT" ]; then
+            echo
+            fail "Package manager lock is still held after ${LOCK_TIMEOUT}s"
+
+            echo
+            echo "Processes holding the package manager lock:"
+            for pid in $LOCK_PIDS; do
+                ps -p "$pid" -o pid,ppid,etime,%cpu,%mem,stat,cmd --no-headers 2>/dev/null || true
+            done
+
+            echo
+            echo "Check package manager state with:"
+            echo "  ps aux | grep -E 'apt|dpkg|unattended' | grep -v grep"
+            echo "  sudo fuser -v /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock"
+            echo
+            echo "Wait for automatic updates to finish, then run the installer again."
+            return 1
+        fi
+
+        sleep 5
     done
 
-    while fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
-        warn "Waiting for dpkg lock..."
-        sleep 10
-    done
+    info "Package manager lock released"
 
     info "Checking package manager state"
 
@@ -274,18 +326,17 @@ install_xray() {
 
     if command -v xray >/dev/null 2>&1; then
         ok "Xray already installed"
-        return
+    else
+        info "Installing Xray"
+
+        bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+
+        if ! command -v xray >/dev/null 2>&1; then
+            fail "Xray installation failed"
+        fi
+
+        ok "Xray installed"
     fi
-
-    info "Installing Xray"
-
-    bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
-
-    if ! command -v xray >/dev/null 2>&1; then
-        fail "Xray installation failed"
-    fi
-
-    ok "Xray installed"
 
     XRAY_DEFAULT_CONF="/usr/local/etc/xray/config.json"
     XRAY_EXAMPLE="${INSTALL_DIR}/deploy/botinstaller/examples/xray.config.example.json"
@@ -294,6 +345,9 @@ install_xray() {
         mkdir -p "$(dirname "$XRAY_DEFAULT_CONF")"
         install -m 644 "$XRAY_EXAMPLE" "$XRAY_DEFAULT_CONF"
         ok "Xray example config installed: $XRAY_DEFAULT_CONF"
+    elif [ "$(tr -d '[:space:]' < "$XRAY_DEFAULT_CONF")" = "{}" ] && [ -f "$XRAY_EXAMPLE" ]; then
+        install -m 644 "$XRAY_EXAMPLE" "$XRAY_DEFAULT_CONF"
+        ok "Empty Xray config replaced with example: $XRAY_DEFAULT_CONF"
     fi
 }
 
@@ -339,22 +393,21 @@ install_awg() {
 
     if command -v awg >/dev/null 2>&1; then
         ok "AmneziaWG already installed"
-        return
+    else
+        info "Installing AmneziaWG from PPA"
+
+        DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common >/dev/null
+
+        add-apt-repository ppa:amnezia/ppa -y
+        apt-get update -y >/dev/null
+        DEBIAN_FRONTEND=noninteractive apt-get install -y amneziawg-dkms amneziawg-tools >/dev/null
+
+        if ! command -v awg >/dev/null 2>&1; then
+            fail "AmneziaWG installation failed"
+        fi
+
+        ok "AmneziaWG installed"
     fi
-
-    info "Installing AmneziaWG from PPA"
-
-    DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common >/dev/null
-
-    add-apt-repository ppa:amnezia/ppa -y
-    apt-get update -y >/dev/null
-    DEBIAN_FRONTEND=noninteractive apt-get install -y amneziawg-dkms amneziawg-tools >/dev/null
-
-    if ! command -v awg >/dev/null 2>&1; then
-        fail "AmneziaWG installation failed"
-    fi
-
-    ok "AmneziaWG installed"
 
     AWG_DEFAULT_CONF="/etc/amnezia/amneziawg/awg0.conf"
     AWG_EXAMPLE="${INSTALL_DIR}/deploy/botinstaller/examples/awg0.conf.example"
