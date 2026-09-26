@@ -1,4 +1,4 @@
-from multiprocessing import Process, Queue
+from multiprocessing import Queue, get_context
 from pathlib import Path
 from unittest.mock import patch
 
@@ -17,6 +17,8 @@ from services.vps_monitor_runner import (
     run_once,
 )
 from services.vps_monitor_state import StateUpdate
+
+_MP_CONTEXT = get_context("spawn")
 
 
 def _try_monitor_lock(lock_path: str, result: Queue) -> None:
@@ -41,8 +43,8 @@ def test_monitor_lock_is_released_for_next_process(tmp_path: Path):
     assert lock_file is not None
     lock_file.close()
 
-    result = Queue()
-    process = Process(
+    result = _MP_CONTEXT.Queue()
+    process = _MP_CONTEXT.Process(
         target=_try_monitor_lock,
         args=(str(lock_path), result),
     )
@@ -59,8 +61,8 @@ def test_monitor_lock_blocks_second_process(tmp_path: Path):
     lock_file = acquire_monitor_lock(str(lock_path))
     assert lock_file is not None
 
-    result = Queue()
-    process = Process(
+    result = _MP_CONTEXT.Queue()
+    process = _MP_CONTEXT.Process(
         target=_try_monitor_lock,
         args=(str(lock_path), result),
     )

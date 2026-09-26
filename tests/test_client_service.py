@@ -305,6 +305,21 @@ def test_send_qr_or_conf_vless_no_link():
             cs.send_qr_or_conf(bot, 100, "client1", "vless")
 
 
+def test_send_qr_or_conf_vless_escapes_username_in_markdown():
+    bot = Mock()
+
+    with (
+        patch("services.client_service.xray_get_link", return_value="vless://test"),
+        patch("services.client_service.subprocess.run"),
+        patch("services.client_service.open", mock_open(read_data=b"qr")),
+        patch("services.client_service.os.path.exists", return_value=False),
+    ):
+        cs.send_qr_or_conf(bot, 100, "user_test", "vless")
+
+    caption = bot.send_photo.call_args.kwargs["caption"]
+    assert "*VLESS QR: user\\_test*" in caption
+
+
 def test_send_qr_or_conf_awg_no_config():
     bot = Mock()
 
@@ -375,6 +390,26 @@ def _fake_qr_open(path, mode="r", *args, **kwargs):
 
         return BytesIO(b"fake_image")
     return open(path, mode, *args, **kwargs)
+
+
+def test_send_qr_or_conf_awg_escapes_username_in_markdown(monkeypatch):
+    bot = Mock()
+    monkeypatch.setattr(cs, "get_awg_listen_port", lambda: "58352")
+
+    with (
+        patch("services.client_service.awg_get_config", return_value="awg-config"),
+        patch(
+            "services.client_service.load_awg_registry",
+            return_value={"user_test": {"ip": "10.66.66.10"}},
+        ),
+        patch("services.client_service.subprocess.run"),
+        patch("services.client_service.open", side_effect=_fake_qr_open),
+        patch("services.client_service.os.path.exists", return_value=False),
+    ):
+        cs.send_qr_or_conf(bot, 100, "user_test", "awg")
+
+    caption = bot.send_photo.call_args.kwargs["caption"]
+    assert "*AWG QR + Конфиг: user\\_test*" in caption
 
 
 def test_send_qr_or_conf_awg_success():
