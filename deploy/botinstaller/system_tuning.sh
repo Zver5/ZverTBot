@@ -30,9 +30,6 @@ cat > "$SYSCTL_CONF" <<EOF
 # ZverTBot network tuning
 
 net.netfilter.nf_conntrack_max=262144
-net.netfilter.nf_conntrack_tcp_timeout_established=432000
-net.netfilter.nf_conntrack_tcp_timeout_close_wait=60
-net.netfilter.nf_conntrack_tcp_timeout_time_wait=120
 EOF
 
 if ! modprobe nf_conntrack; then

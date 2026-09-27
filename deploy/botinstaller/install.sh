@@ -322,6 +322,45 @@ extract_archive() {
 }
 
 
+install_unattended_upgrades() {
+    info "Configuring unattended-upgrades"
+
+    if ! dpkg-query -W -f='${Status}' unattended-upgrades 2>/dev/null | grep -q "install ok installed"; then
+        apt-get install -y unattended-upgrades
+    fi
+
+    cat > /etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+
+    cat > /etc/apt/apt.conf.d/50unattended-upgrades <<'EOF'
+// ZverTBot unattended security updates
+
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
+};
+
+Unattended-Upgrade::Package-Blacklist {
+    "xray-core";
+    "wireguard";
+    "wireguard-tools";
+    "iptables";
+    "netfilter-persistent";
+};
+
+Unattended-Upgrade::Automatic-Reboot "false";
+EOF
+
+    if ! unattended-upgrade --dry-run >/dev/null 2>&1; then
+        warn "unattended-upgrade dry-run failed"
+    fi
+
+    ok "Unattended security updates configured"
+}
+
 install_xray() {
 
     if command -v xray >/dev/null 2>&1; then
@@ -348,6 +387,30 @@ install_xray() {
     elif [ "$(tr -d '[:space:]' < "$XRAY_DEFAULT_CONF")" = "{}" ] && [ -f "$XRAY_EXAMPLE" ]; then
         install -m 644 "$XRAY_EXAMPLE" "$XRAY_DEFAULT_CONF"
         ok "Empty Xray config replaced with example: $XRAY_DEFAULT_CONF"
+    fi
+
+    XRAY_DROPIN_DIR="/etc/systemd/system/xray.service.d"
+    XRAY_DROPIN="${XRAY_DROPIN_DIR}/99-zvertbot-nofile.conf"
+
+    mkdir -p "$XRAY_DROPIN_DIR"
+
+    cat > "$XRAY_DROPIN" <<'EOF'
+[Service]
+LimitNOFILE=65535
+EOF
+
+    systemctl daemon-reload
+
+    if systemctl is-active --quiet xray.service; then
+        if ! systemctl restart xray.service; then
+            fail "Failed to restart Xray after applying LimitNOFILE"
+        fi
+    fi
+
+    if [ "$(systemctl show xray.service -p LimitNOFILE --value 2>/dev/null)" = "65535" ]; then
+        ok "Xray LimitNOFILE=65535"
+    else
+        warn "Xray LimitNOFILE could not be verified"
     fi
 }
 
@@ -1174,6 +1237,9 @@ fi
 install_packages
 install_rclone
 
+
+# Automatic security updates
+install_unattended_upgrades
 
 # System tuning
 TUNING_SCRIPT="${INSTALL_DIR}/deploy/botinstaller/system_tuning.sh"
