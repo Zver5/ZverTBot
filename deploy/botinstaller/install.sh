@@ -280,13 +280,14 @@ install_packages() {
     APT_INSTALL_LOG=$(mktemp)
 
     if ! DEBIAN_FRONTEND=noninteractive apt-get install -y $PACKAGES >"$APT_INSTALL_LOG" 2>&1; then
-        cat "$APT_INSTALL_LOG"
+        cat "$APT_INSTALL_LOG" >>"$LOG_FILE"
         rm -f "$APT_INSTALL_LOG"
         fail "Failed to install system packages"
     fi
 
-    cat "$APT_INSTALL_LOG"
+    cat "$APT_INSTALL_LOG" >>"$LOG_FILE"
     rm -f "$APT_INSTALL_LOG"
+    ok "System packages installed"
 
     info "Validating package manager state"
 
@@ -400,8 +401,37 @@ Unattended-Upgrade::Package-Blacklist {
 Unattended-Upgrade::Automatic-Reboot "false";
 EOF
 
-    if ! unattended-upgrade --dry-run >/dev/null 2>&1; then
-        fail "unattended-upgrade dry-run failed"
+    info "Validating unattended-upgrade configuration"
+
+    if ! grep -q '^APT::Periodic::Update-Package-Lists "1";$' \
+        /etc/apt/apt.conf.d/20auto-upgrades ||
+       ! grep -q '^APT::Periodic::Unattended-Upgrade "1";$' \
+        /etc/apt/apt.conf.d/20auto-upgrades; then
+        fail "Invalid APT periodic update configuration"
+    fi
+
+    UPGRADE_CONFIG="/etc/apt/apt.conf.d/52-zvertbot-unattended-upgrades"
+
+    for origin in \
+        '${distro_id}:${distro_codename}-security' \
+        '${distro_id}ESMApps:${distro_codename}-apps-security' \
+        '${distro_id}ESM:${distro_codename}-infra-security'
+    do
+        if ! grep -Fq "\"$origin\";" "$UPGRADE_CONFIG"; then
+            fail "Missing unattended-upgrade origin: $origin"
+        fi
+    done
+
+    for package in xray-core wireguard wireguard-tools iptables netfilter-persistent
+    do
+        if ! grep -Fq "\"$package\";" "$UPGRADE_CONFIG"; then
+            fail "Missing unattended-upgrade blacklist entry: $package"
+        fi
+    done
+
+    if ! grep -q '^Unattended-Upgrade::Automatic-Reboot "false";$' \
+        "$UPGRADE_CONFIG"; then
+        fail "Invalid unattended-upgrade reboot configuration"
     fi
 
     ok "Unattended security updates configured"
@@ -597,7 +627,7 @@ detect_service_config_paths() {
         done
     fi
 
-    if [ -z "$AWG_CONF" ]; then
+    if [ -z "$AWG_CONF" ] && [ "$INSTALL_AWG" = true ]; then
         warn "AWG config path not detected."
         warn "Please set AWG_CONF manually in .env"
     fi
@@ -955,7 +985,7 @@ download_geoip_databases() {
             --connect-timeout 15 \
             --max-time 900 \
             "$url" \
-            -o "$tmp_gz"
+            -o "$tmp_gz" >>"$LOG_FILE" 2>&1
         then
             rm -f "$tmp_gz" "$tmp_mmdb"
             return 1
@@ -1258,7 +1288,7 @@ verify_install() {
 
     echo
     echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║                 INSTALLATION VERIFICATION                ║${NC}"
+    echo -e "${CYAN}║                INSTALLATION VERIFICATION                 ║${NC}"
     echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
 
     echo
@@ -1341,7 +1371,12 @@ verify_install() {
             verify_fail "Xray" "not installed"
         fi
 
-        verify_service "xray.service"
+        if systemctl is-active --quiet xray.service; then
+            verify_pass "xray.service" "active"
+        else
+            verify_info "xray.service" "not active (template config)"
+        fi
+
         verify_enabled "xray.service"
 
         XRAY_LIMIT="$(systemctl show xray.service -p LimitNOFILE --value 2>/dev/null || true)"

@@ -27,7 +27,7 @@
         "network": "tcp",
         "security": "reality",
         "realitySettings": {
-          "serverNames": ["example.com"],
+          "serverName": "example.com",
           "privateKey": "REPLACE_WITH_XRAY_REALITY_PRIVATE_KEY",
           "shortIds": ["REPLACE_WITH_REALITY_SHORT_ID"]
         }
@@ -51,7 +51,7 @@
         "network": "tcp",
         "security": "reality",
         "realitySettings": {
-          "serverNames": ["example.com"],
+          "serverName": "example.com",
           "privateKey": "REPLACE_WITH_XRAY_REALITY_PRIVATE_KEY",
           "shortIds": ["REPLACE_WITH_REALITY_SHORT_ID"]
         }
