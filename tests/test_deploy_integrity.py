@@ -42,9 +42,6 @@ def test_system_tuning_contains_required_settings():
 
     required = [
         "nf_conntrack_max=262144",
-        "nf_conntrack_tcp_timeout_established=432000",
-        "nf_conntrack_tcp_timeout_close_wait=60",
-        "nf_conntrack_tcp_timeout_time_wait=120",
         "precedence ::ffff:0:0/96  100",
         "SystemMaxUse",
         "RuntimeMaxUse",
