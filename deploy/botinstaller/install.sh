@@ -556,8 +556,15 @@ detect_service_config_paths() {
     fi
 
     if [ -z "$XRAY_CONF" ]; then
-        warn "Xray config path not detected."
-        warn "Please set XRAY_CONF manually in .env"
+        XRAY_DEFAULT_CONF="/usr/local/etc/xray/config.json"
+
+        if [ -f "$XRAY_DEFAULT_CONF" ]; then
+            XRAY_CONF="$XRAY_DEFAULT_CONF"
+            ok "Xray config path: $XRAY_CONF"
+        else
+            XRAY_CONF="$XRAY_DEFAULT_CONF"
+            info "Xray config not found yet, using default path: $XRAY_CONF"
+        fi
     fi
 
 
@@ -607,6 +614,11 @@ create_env() {
 
         if [ ! -s "$ENV_FILE" ]; then
             fail ".env exists but is empty"
+        fi
+
+        if grep -q '^XRAY_CONF=$' "$ENV_FILE"; then
+            sed -i 's|^XRAY_CONF=$|XRAY_CONF=/usr/local/etc/xray/config.json|' "$ENV_FILE"
+            ok "XRAY_CONF was empty, set to /usr/local/etc/xray/config.json"
         fi
 
         chmod 600 "$ENV_FILE"
