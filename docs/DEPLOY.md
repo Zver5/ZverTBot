@@ -197,6 +197,10 @@ GeoIP-базы устанавливаются отдельно на целево
 
 Установка выполняется от имени `root`.
 
+Installer поддерживает Ubuntu.
+
+Перед началом установки выполняется проверка операционной системы. Если целевая система не является Ubuntu, установка завершается с ошибкой.
+
 Для установки используются:
 
 ```text
@@ -275,30 +279,30 @@ chmod +x install.sh
 # Что выполняет установщик
 
 Установщик отвечает за подготовку программного окружения ZverTBot.
-
 Фактический порядок выполнения включает:
 
 1. проверку прав `root`;
-2. проверку поддерживаемой операционной системы;
+2. проверку поддерживаемой ОС;
 3. проверку сети и DNS;
 4. распаковку deploy-архива;
 5. запуск `checks.sh`;
-6. установку системных пакетов;
-7. запуск `system_tuning.sh`;
-8. создание `.env`;
-9. включение IPv4 forwarding;
-10. создание runtime-каталогов и начального runtime-состояния;
-11. создание Python virtual environment и установку зависимостей;
-12. загрузку и проверку GeoIP-баз;
-13. установку systemd unit-файлов;
-14. `systemctl daemon-reload`;
-15. запуск и включение core и optional-компонентов;
-16. при использовании `-xray` — установку и подготовку Xray;
-17. при использовании `-awg` — установку и подготовку AmneziaWG;
-18. определение путей конфигурации VPN-компонентов;
-19. базовую проверку установленных сервисов.
+6. ожидание освобождения `dpkg/apt` lock при необходимости;
+7. установку системных пакетов;
+8. установку и проверку `rclone`;
+9. настройку автоматических обновлений безопасности;
+10. запуск `system_tuning.sh`;
+11. при использовании `-xray` — установку и подготовку Xray;
+12. при использовании `-awg` — установку и подготовку AmneziaWG;
+13. создание `.env`;
+14. включение IPv4 forwarding;
+15. создание runtime-каталогов и начального runtime-состояния;
+16. создание Python virtual environment и установку зависимостей;
+17. создание systemd unit-файлов;
+18. запуск и включение core-компонентов;
+19. выполнение финальной автоматической verification;
+20. вывод результата установки и пути к installer log.
 
----
+Если финальная verification обнаруживает ошибки, installer завершается с ненулевым кодом возврата.
 
 # Конфигурация
 
@@ -469,6 +473,16 @@ XRAY_CONF
 ```
 
 Если определить путь не удалось, `XRAY_CONF` может остаться пустым, а installer выводит предупреждение.
+
+При установке Xray installer также создаёт systemd drop-in:
+
+`/etc/systemd/system/xray.service.d/99-zvertbot-nofile.conf`
+
+с параметром `LimitNOFILE=65535`.
+
+После изменения выполняется `systemctl daemon-reload`. Если Xray уже активен, installer перезапускает `xray.service`.
+
+Installer проверяет фактическое значение `LimitNOFILE` через systemd.
 
 ---
 
@@ -661,6 +675,26 @@ GeoIP-базы являются внешними обновляемыми дан
 
 ---
 
+# System tuning
+
+Installer запускает `deploy/botinstaller/system_tuning.sh`.
+
+Настраиваются только следующие параметры:
+
+* `/etc/gai.conf` — `precedence ::ffff:0:0/96  100`, чтобы предпочитать IPv4 при разрешении адресов;
+* `/etc/sysctl.d/99-zvertbot.conf` — `net.netfilter.nf_conntrack_max=262144`;
+* `/etc/systemd/journald.conf`:
+  * `SystemMaxUse=100M`;
+  * `RuntimeMaxUse=50M`;
+  * `MaxRetentionSec=7day`;
+  * `Compress=yes`.
+
+После изменения параметров journald выполняется перезапуск `systemd-journald`.
+
+Если `nf_conntrack` недоступен в ядре, установщик выводит предупреждение и продолжает установку.
+
+Другие системные сетевые параметры installer не изменяет.
+
 # Systemd
 
 Systemd-конфигурация ZverTBot разделена на две категории:
@@ -763,19 +797,29 @@ ${BACKUP_REMOTE}:${BACKUP_ROOT_DIR}/passport/
 
 # Проверка установки
 
-Установщик выполняет базовую автоматическую проверку установленной системы.
+После выполнения установки installer запускает финальную автоматическую verification.
 
-Проверяются основные компоненты:
+Проверяются следующие группы:
 
-```text
-zvertbot.service
-zvertbot-vps-monitor.service
-stats-http.service
-vps-stats.timer
-geoip-collect.timer
-```
+- **CORE SERVICES** — `zvertbot.service`, `zvertbot-vps-monitor.service`, `stats-http.service`;
+- **TIMERS** — `vps-stats.timer`, `geoip-collect.timer`: активность и enabled-состояние;
+- **SECURITY UPDATES** — наличие и конфигурация `unattended-upgrades`;
+- **SYSTEM TUNING** — IPv4 preference, `nf_conntrack_max` и параметры journald;
+- **OPTIONAL COMPONENTS** — Xray и AmneziaWG, если они были запрошены.
 
-Для таймеров дополнительно проверяется их включение.
+Каждая проверка получает статус `PASS`, `FAIL`, `SKIP` или `INFO`.
+
+Для Xray дополнительно проверяются:
+
+- наличие Xray;
+- активность и enabled-состояние `xray.service`;
+- `LimitNOFILE=65535`;
+- наличие конфигурационного файла;
+- enabled-состояние `xray-traffic.timer`.
+
+Для AmneziaWG проверяется наличие установленного `awg`. Конфигурация `awg0.conf` является инфраструктурным состоянием и не считается обязательной ошибкой, если installer её не создавал.
+
+Если обнаружен хотя бы один `FAIL`, verification считается неуспешной и installer завершается с кодом `1`.
 
 После установки можно выполнить ручную проверку:
 
@@ -800,9 +844,43 @@ cd /opt/ZverTBot
 systemctl --failed
 ```
 
-Optional-компоненты, Xray, AmneziaWG и эксплуатационные функции проверяются в соответствии с конфигурацией конкретного VPS.
+# Автоматические обновления безопасности
 
----
+Installer устанавливает и настраивает `unattended-upgrades`.
+
+Используются:
+
+`/etc/apt/apt.conf.d/20auto-upgrades`
+
+`/etc/apt/apt.conf.d/52-zvertbot-unattended-upgrades`
+
+Разрешены security updates Ubuntu и соответствующие ESM security updates.
+
+Из автоматических обновлений исключаются `xray-core`, `wireguard`, `wireguard-tools`, `iptables` и `netfilter-persistent`.
+
+Автоматическая перезагрузка VPS отключена.
+
+После настройки installer выполняет `unattended-upgrade --dry-run`. Ошибка dry-run считается ошибкой установки.
+
+# Журнал установки
+
+Installer сохраняет полный вывод установки в `/var/log/zvertbot-installer.log`.
+
+Вывод одновременно отображается в терминале и записывается в журнал.
+
+Файл журнала создаётся с правами `600`.
+
+При каждом запуске в журнал записываются дата, время и аргументы запуска.
+
+Для диагностики:
+
+`less /var/log/zvertbot-installer.log`
+
+`tail -100 /var/log/zvertbot-installer.log`
+
+`grep -nEi 'error|fail|warning|warn|✗' /var/log/zvertbot-installer.log`
+
+Журнал installer не входит в deploy-архив.
 
 # Перенос существующего VPS
 

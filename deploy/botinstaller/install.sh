@@ -14,6 +14,52 @@ INSTALL_DIR="/opt/ZverTBot"
 ENV_FILE="${INSTALL_DIR}/.env"
 SYSTEMD_DIR="/etc/systemd/system"
 
+LOG_FILE="/var/log/zvertbot-installer.log"
+
+# Installer output is written both to the terminal and to a persistent log.
+if [ "$EUID" -eq 0 ]; then
+    touch "$LOG_FILE"
+    chmod 600 "$LOG_FILE"
+
+    exec > >(tee -a "$LOG_FILE") 2>&1
+
+    echo
+    echo "============================================================"
+    echo " ZverTBot installer run: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+    echo " Arguments: $*"
+    echo "============================================================"
+    echo
+fi
+
+installer_exit() {
+    local rc=$?
+
+    if [ "$rc" -ne 0 ]; then
+        echo
+        echo -e "${RED}[FAIL]${NC} Installer terminated with exit code ${rc}"
+        echo "Log: ${LOG_FILE}"
+    else
+        echo
+        echo "Installer finished successfully: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+    fi
+}
+
+installer_error() {
+    local rc=$?
+
+    echo
+    echo -e "${RED}[FAIL]${NC} Unexpected error"
+    echo "  Line: ${BASH_LINENO[0]}"
+    echo "  Command: ${BASH_COMMAND}"
+    echo "  Exit code: ${rc}"
+    echo "  Log: ${LOG_FILE}"
+
+    return "$rc"
+}
+
+trap installer_exit EXIT
+trap installer_error ERR
+
 # ---------- Colors ----------
 RED="\033[0;31m"
 GREEN="\033[0;32m"
@@ -89,11 +135,11 @@ check_os() {
     . /etc/os-release
 
     case "$ID" in
-        ubuntu|debian)
+        ubuntu)
             ok "$PRETTY_NAME detected"
             ;;
         *)
-            fail "Supported only Debian/Ubuntu"
+            fail "Supported only Ubuntu"
             ;;
     esac
 }
@@ -326,7 +372,7 @@ install_unattended_upgrades() {
     info "Configuring unattended-upgrades"
 
     if ! dpkg-query -W -f='${Status}' unattended-upgrades 2>/dev/null | grep -q "install ok installed"; then
-        apt-get install -y unattended-upgrades
+        DEBIAN_FRONTEND=noninteractive apt-get install -y unattended-upgrades
     fi
 
     cat > /etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
@@ -334,7 +380,7 @@ APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 EOF
 
-    cat > /etc/apt/apt.conf.d/50unattended-upgrades <<'EOF'
+    cat > /etc/apt/apt.conf.d/52-zvertbot-unattended-upgrades <<'EOF'
 // ZverTBot unattended security updates
 
 Unattended-Upgrade::Allowed-Origins {
@@ -355,7 +401,7 @@ Unattended-Upgrade::Automatic-Reboot "false";
 EOF
 
     if ! unattended-upgrade --dry-run >/dev/null 2>&1; then
-        warn "unattended-upgrade dry-run failed"
+        fail "unattended-upgrade dry-run failed"
     fi
 
     ok "Unattended security updates configured"
@@ -1141,74 +1187,237 @@ zvertbot-backup.timer
 
 verify_install() {
 
-echo
-echo -e "${CYAN}Checking services...${NC}"
-echo
+    VERIFY_PASS=0
+    VERIFY_FAIL=0
+    VERIFY_SKIP=0
+    VERIFY_INFO=0
 
-CHECKS="
-zvertbot.service
-zvertbot-vps-monitor.service
-stats-http.service
-vps-stats.timer
-geoip-collect.timer
-xray-traffic.timer
-"
+    verify_pass() {
+        printf "  ${GREEN}✓${NC} %-28s %s\n" "$1" "$2"
+        VERIFY_PASS=$((VERIFY_PASS + 1))
+    }
 
-for s in $CHECKS
-do
-    if systemctl is-active --quiet "$s"; then
-        ok "$s active"
+    verify_fail() {
+        printf "  ${RED}✗${NC} %-28s %s\n" "$1" "$2"
+        VERIFY_FAIL=$((VERIFY_FAIL + 1))
+    }
+
+    verify_skip() {
+        printf "  ${YELLOW}·${NC} %-28s %s\n" "$1" "$2"
+        VERIFY_SKIP=$((VERIFY_SKIP + 1))
+    }
+
+    verify_info() {
+        printf "  ${BLUE}•${NC} %-28s %s\n" "$1" "$2"
+        VERIFY_INFO=$((VERIFY_INFO + 1))
+    }
+
+    verify_service() {
+        local service="$1"
+
+        if systemctl is-active --quiet "$service"; then
+            verify_pass "$service" "active"
+        else
+            verify_fail "$service" "not active"
+        fi
+    }
+
+    verify_enabled() {
+        local unit="$1"
+
+        if systemctl is-enabled --quiet "$unit"; then
+            verify_pass "$unit" "enabled"
+        else
+            verify_fail "$unit" "disabled"
+        fi
+    }
+
+    verify_value() {
+        local name="$1"
+        local actual="$2"
+        local expected="$3"
+
+        if [ "$actual" = "$expected" ]; then
+            verify_pass "$name" "$actual"
+        else
+            verify_fail "$name" "expected ${expected}, got ${actual:-<empty>}"
+        fi
+    }
+
+    echo
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║                 INSTALLATION VERIFICATION                ║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+
+    echo
+    echo -e "${CYAN}CORE SERVICES${NC}"
+
+    verify_service "zvertbot.service"
+    verify_service "zvertbot-vps-monitor.service"
+    verify_service "stats-http.service"
+
+    echo
+    echo -e "${CYAN}TIMERS${NC}"
+
+    verify_service "vps-stats.timer"
+    verify_service "geoip-collect.timer"
+
+    verify_enabled "vps-stats.timer"
+    verify_enabled "geoip-collect.timer"
+
+    echo
+    echo -e "${CYAN}SECURITY UPDATES${NC}"
+
+    if dpkg-query -W -f='${Status}' unattended-upgrades 2>/dev/null \
+        | grep -q "install ok installed"; then
+        verify_pass "unattended-upgrades" "installed"
     else
-        warn "$s not active"
+        verify_fail "unattended-upgrades" "not installed"
     fi
-done
 
-
-echo
-echo -e "${CYAN}Checking timers...${NC}"
-
-TIMERS="
-vps-stats.timer
-geoip-collect.timer
-xray-traffic.timer
-"
-
-for t in $TIMERS
-do
-    if systemctl is-enabled --quiet "$t"; then
-        ok "$t enabled"
+    if [ -f /etc/apt/apt.conf.d/20auto-upgrades ]; then
+        verify_pass "APT periodic updates" "configured"
     else
-        warn "$t disabled"
+        verify_fail "APT periodic updates" "configuration missing"
     fi
-done
 
+    if [ -f /etc/apt/apt.conf.d/52-zvertbot-unattended-upgrades ]; then
+        verify_pass "Security update policy" "configured"
+    else
+        verify_fail "Security update policy" "configuration missing"
+    fi
+
+    echo
+    echo -e "${CYAN}SYSTEM TUNING${NC}"
+
+    if grep -q "^precedence ::ffff:0:0/96  100" /etc/gai.conf 2>/dev/null; then
+        verify_pass "IPv4 address preference" "configured"
+    else
+        verify_fail "IPv4 address preference" "not configured"
+    fi
+
+    CONNTRACK_MAX="$(sysctl -n net.netfilter.nf_conntrack_max 2>/dev/null || true)"
+    if [ "$CONNTRACK_MAX" = "262144" ]; then
+        verify_pass "nf_conntrack_max" "$CONNTRACK_MAX"
+    else
+        verify_fail "nf_conntrack_max" "expected 262144, got ${CONNTRACK_MAX:-<empty>}"
+    fi
+
+    IP_FORWARD="$(sysctl -n net.ipv4.ip_forward 2>/dev/null || true)"
+    verify_value "IPv4 forwarding" "$IP_FORWARD" "1"
+
+    JOURNALD="/etc/systemd/journald.conf"
+
+    JOURNAL_SYSTEM_MAX="$(grep -E '^[[:space:]]*SystemMaxUse=' "$JOURNALD" 2>/dev/null | tail -1 | cut -d= -f2-)"
+    JOURNAL_RUNTIME_MAX="$(grep -E '^[[:space:]]*RuntimeMaxUse=' "$JOURNALD" 2>/dev/null | tail -1 | cut -d= -f2-)"
+    JOURNAL_RETENTION="$(grep -E '^[[:space:]]*MaxRetentionSec=' "$JOURNALD" 2>/dev/null | tail -1 | cut -d= -f2-)"
+    JOURNAL_COMPRESS="$(grep -E '^[[:space:]]*Compress=' "$JOURNALD" 2>/dev/null | tail -1 | cut -d= -f2-)"
+
+    verify_value "journald SystemMaxUse" "$JOURNAL_SYSTEM_MAX" "100M"
+    verify_value "journald RuntimeMaxUse" "$JOURNAL_RUNTIME_MAX" "50M"
+    verify_value "journald MaxRetentionSec" "$JOURNAL_RETENTION" "7day"
+    verify_value "journald Compress" "$JOURNAL_COMPRESS" "yes"
+
+    echo
+    echo -e "${CYAN}OPTIONAL COMPONENTS${NC}"
+
+    if [ "$INSTALL_XRAY" = true ]; then
+
+        if command -v xray >/dev/null 2>&1; then
+            verify_pass "Xray" "installed"
+        else
+            verify_fail "Xray" "not installed"
+        fi
+
+        verify_service "xray.service"
+        verify_enabled "xray.service"
+
+        XRAY_LIMIT="$(systemctl show xray.service -p LimitNOFILE --value 2>/dev/null || true)"
+        verify_value "Xray LimitNOFILE" "$XRAY_LIMIT" "65535"
+
+        if [ -f /usr/local/etc/xray/config.json ]; then
+            verify_pass "Xray config" "detected"
+        elif [ -f /etc/xray/config.json ]; then
+            verify_pass "Xray config" "detected"
+        else
+            verify_fail "Xray config" "not found"
+        fi
+
+        if systemctl is-enabled --quiet xray-traffic.timer 2>/dev/null; then
+            verify_pass "xray-traffic.timer" "enabled"
+        else
+            verify_fail "xray-traffic.timer" "disabled"
+        fi
+
+    else
+        verify_skip "Xray" "not requested"
+    fi
+
+    if [ "$INSTALL_AWG" = true ]; then
+
+        if command -v awg >/dev/null 2>&1; then
+            verify_pass "AmneziaWG" "installed"
+        else
+            verify_fail "AmneziaWG" "not installed"
+        fi
+
+        if [ -f /etc/amnezia/amneziawg/awg0.conf ]; then
+            verify_pass "AWG config" "detected"
+        else
+            verify_info "AWG config" "not created by installer"
+        fi
+
+    else
+        verify_skip "AmneziaWG" "not requested"
+    fi
+
+    echo
+    echo -e "${CYAN}VERIFICATION RESULT${NC}"
+    echo
+    printf "  ${GREEN}PASS${NC}: %d\n" "$VERIFY_PASS"
+    printf "  ${YELLOW}SKIP${NC}: %d\n" "$VERIFY_SKIP"
+    printf "  ${BLUE}INFO${NC}: %d\n" "$VERIFY_INFO"
+    printf "  ${RED}FAIL${NC}: %d\n" "$VERIFY_FAIL"
+
+    if [ "$VERIFY_FAIL" -ne 0 ]; then
+        echo
+        echo -e "${RED}Installation verification FAILED.${NC}"
+        echo "Review the checks above and the installer log:"
+        echo "  ${LOG_FILE}"
+        VERIFY_FAILED=1
+        return 0
+    fi
+
+    echo
+    echo -e "${GREEN}Installation verification PASSED.${NC}"
+    VERIFY_FAILED=0
 }
 
 summary() {
 
-echo
+    echo
+    echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║              ZverTBot INSTALLATION COMPLETE              ║${NC}"
+    echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
 
-echo -e "${GREEN}"
-echo "======================================"
-echo " ZverTBot installation completed"
-echo "======================================"
-echo -e "${NC}"
+    echo
+    echo "Installation directory:"
+    echo "  ${INSTALL_DIR}"
 
-echo
-echo "Location:"
-echo "${INSTALL_DIR}"
-echo
+    echo
+    echo "Installer log:"
+    echo "  ${LOG_FILE}"
 
-echo "Service:"
-echo "zvertbot.service"
-echo
+    echo
+    echo "Useful commands:"
+    echo "  systemctl status zvertbot"
+    echo "  journalctl -u zvertbot -f"
+    echo "  tail -100 ${LOG_FILE}"
 
-echo "Commands:"
-echo
-echo "systemctl status zvertbot"
-echo "journalctl -u zvertbot -f"
-echo
-
+    echo
+    echo "Troubleshooting:"
+    echo "  grep -nEi 'error|fail|warning|warn|✗' ${LOG_FILE}"
+    echo
 }
 
 
@@ -1268,6 +1477,10 @@ create_venv
 create_service
 
 verify_install
+
+if [ "$VERIFY_FAILED" -eq 1 ]; then
+    exit 1
+fi
 
 summary
 
