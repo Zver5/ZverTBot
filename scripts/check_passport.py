@@ -112,8 +112,12 @@ def fail(text):
 
 
 def check_file(path):
-    if Path(path).exists():
+    path = Path(path)
+
+    if path.is_file():
         ok(f"Файл: {path}")
+    elif path.exists():
+        fail(f"Путь существует, но это не файл: {path}")
     else:
         fail(f"Файл отсутствует: {path}")
 
@@ -361,92 +365,128 @@ def port_listening(port, proto):
 
 def port_policy_ok(
     port,
+    proto,
     policy_type,
-    service=None,
     firewall="",
     docker_subnets=None,
 ):
-    """
-    Проверяет именно access-policy.
-    Ничего не печатает и не меняет счётчики.
-    """
-
+    """Проверяет firewall-политику для конкретного порта."""
     if docker_subnets is None:
         docker_subnets = []
 
-    # --------------------------------------------------------
-    # ZverTBot
-    #
-    # Порт берётся динамически.
-    # Ограничение: максимум 5 новых соединений
-    # за 60 секунд с одного IP.
-    # --------------------------------------------------------
-    if service == "zvertbot":
-        return (
-            f"--dport {port}" in firewall
-            and "zvertbot" in firewall
-            and "--update" in firewall
-            and "--seconds 60" in firewall
-            and "--hitcount 6" in firewall
-            and "-j DROP" in firewall
-        )
+    port = str(port)
+    rules = [line.split() for line in firewall.splitlines() if line.strip()]
 
-    # --------------------------------------------------------
-    # WORLD
-    #
-    # Внешние сервисы дополнительно не ограничиваем.
-    # Сам факт LISTEN уже проверяется отдельно.
-    # --------------------------------------------------------
-    if policy_type == "world":
-        return True
-
-    # --------------------------------------------------------
-    # LOCAL
-    #
-    # Разрешаем localhost.
-    # Если сервис опубликован Docker-ом, проверяем реальные
-    # Docker subnet, полученные от docker network inspect.
-    # --------------------------------------------------------
-    if policy_type == "local":
-        if "127.0.0.1" in firewall or "localhost" in firewall:
-            return True
-
-        return any(subnet in firewall for subnet in docker_subnets)
-
-    # --------------------------------------------------------
-    # Xray API
-    #
-    # API должен слушать только localhost.
-    # --------------------------------------------------------
-    if policy_type == "localhost":
-        api_port = XRAY_PASSPORT.get("api_port")
-
-        if not api_port:
+    def rule_matches(tokens, proto=None, source=None, target="ACCEPT"):
+        if "-A" not in tokens or "-j" not in tokens:
             return False
 
-        listening = run(["ss", "-H", "-ltn", f"( sport = :{api_port} )"])
+        try:
+            action = tokens[tokens.index("-j") + 1]
+        except (ValueError, IndexError):
+            return False
 
-        return f"127.0.0.1:{api_port}" in listening
+        if action != target:
+            return False
 
-    # --------------------------------------------------------
-    # Docker
-    #
-    # Никаких жёстко заданных Docker-портов и сетей.
-    #
-    # Порт уже обнаружен через docker ps.
-    # Доступ проверяем по реальным Docker subnet.
-    # --------------------------------------------------------
+        if proto:
+            try:
+                if tokens[tokens.index("-p") + 1] != proto:
+                    return False
+            except (ValueError, IndexError):
+                return False
+
+        try:
+            rule_port = tokens[tokens.index("--dport") + 1]
+        except (ValueError, IndexError):
+            return False
+
+        if rule_port != port:
+            return False
+
+        if source is not None:
+            try:
+                rule_source = tokens[tokens.index("-s") + 1]
+            except (ValueError, IndexError):
+                return False
+
+            if rule_source != source:
+                return False
+
+        return True
+
+    def input_accept(proto):
+        return any(
+            tokens[1] == "INPUT"
+            and rule_matches(tokens, proto=proto)
+            for tokens in rules
+            if len(tokens) > 1
+        )
+
+    def source_accept(source):
+        return any(
+            tokens[1] == "INPUT"
+            and rule_matches(tokens, source=source)
+            for tokens in rules
+            if len(tokens) > 1
+        )
+
+    def listening_output():
+        if proto == "TCP":
+            return run(["ss", "-H", "-ltn", f"( sport = :{port} )"])
+        if proto == "UDP":
+            return run(["ss", "-H", "-lun", f"( sport = :{port} )"])
+        return ""
+
+    if policy_type == "world":
+        return input_accept(proto.lower())
+
+    if policy_type == "localhost":
+        listening = listening_output()
+
+        has_localhost = (
+            f"127.0.0.1:{port}" in listening
+            or f"[::1]:{port}" in listening
+        )
+
+        has_public = (
+            f"0.0.0.0:{port}" in listening
+            or f"[::]:{port}" in listening
+        )
+
+        return has_localhost and not has_public
+
+    if policy_type == "local":
+        listening = listening_output()
+
+        if (
+            f"127.0.0.1:{port}" in listening
+            or f"[::1]:{port}" in listening
+        ):
+            return True
+
+        return any(source_accept(subnet) for subnet in docker_subnets)
+
     if policy_type == "docker":
-        if "127.0.0.1" in firewall:
-            return True
+        allowed_sources = list(docker_subnets)
 
-        if HA_TUNNEL_IP and HA_TUNNEL_IP in firewall:
-            return True
+        if HA_TUNNEL_IP:
+            allowed_sources.append(f"{HA_TUNNEL_IP}/32")
 
-        return any(subnet in firewall for subnet in docker_subnets)
+        allowed_sources.append("127.0.0.1/32")
+
+        has_allowed = any(source_accept(source) for source in allowed_sources)
+
+        has_drop = any(
+            len(tokens) > 1
+            and tokens[1] == "DOCKER-USER"
+            and rule_matches(tokens, target="DROP")
+            for tokens in rules
+        )
+
+        return has_allowed and has_drop
 
     return True
-
 
 def visual_width(text):
     """Возвращает ширину строки в терминале с учётом Unicode/emoji."""
@@ -501,16 +541,25 @@ def print_port_table(title, ports):
         listening = port_listening(port, proto)
         policy_ok = listening and port_policy_ok(
             port,
+            proto,
             policy_type,
-            service,
             firewall,
             docker_subnets,
         )
 
-        if policy_ok:
+        if listening and policy_ok:
             status = "ДОСТУПЕН"
+            result = ok
+        elif listening:
+            # Несоответствие политики — рекомендация, а не
+            # критическая ошибка. Сам сервис при этом доступен.
+            status = "ПОЛИТИКА"
+            result = warn
         else:
-            status = "ПОЛИТИКА" if listening else "НЕДОСТУПЕН"
+            # Сам порт ожидается, но сервис его не слушает.
+            # Это уже фактическая проблема доступности.
+            status = "НЕДОСТУПЕН"
+            result = fail
 
         line = (
             visual_ljust(f"{port}/{proto}", port_w)
@@ -519,10 +568,7 @@ def print_port_table(title, ports):
             + visual_ljust(status.lstrip(), status_w)
         )
 
-        if policy_ok:
-            ok(line)
-        else:
-            fail(line)
+        result(line)
 
 
 # ============================================================
@@ -540,18 +586,6 @@ if ssh_port:
             "TCP",
             "sshd",
             "🌐 WORLD · 🔑 SSH KEY · 🛡 Fail2ban",
-            "world",
-        )
-    )
-
-port = discover_tcp_port("zvertbot")
-if port:
-    tcp_services.append(
-        (
-            port,
-            "TCP",
-            "zvertbot",
-            "🌐 WORLD · ⚡ 5 new conn/min/IP",
             "world",
         )
     )
@@ -599,7 +633,7 @@ for service_name, pattern in (("stats-http", "stats-http"),):
                 port,
                 "TCP",
                 service_name,
-                "127.0.0.1 · Docker",
+                "127.0.0.1",
                 "local",
             )
         )
@@ -645,7 +679,7 @@ print_port_table(
 section("🛡️ БЕЗОПАСНОСТЬ И ДОСТУП (SSH)")
 auth_keys = Path.home() / ".ssh" / "authorized_keys"
 
-if auth_keys.exists():
+if auth_keys.is_file():
     mode = oct(auth_keys.stat().st_mode)[-3:]
 
     if mode == "600":
@@ -664,7 +698,7 @@ if any(
 ):
     ok("SSH PasswordAuthentication OFF")
 else:
-    warn("SSH PasswordAuthentication НЕ ОТКЛЮЧЕН")
+    fail("SSH PasswordAuthentication НЕ ОТКЛЮЧЕН")
 
 
 section("🌐 СЕТЬ И ЯДРО")
@@ -696,10 +730,12 @@ else:
     warn("IPv4 priority             /etc/gai.conf НЕ НАЙДЕН")
 
 
-if "262144" in run(["sysctl", "-n", "net.netfilter.nf_conntrack_max"]):
-    ok("nf_conntrack_max          262144")
+conntrack_value = run(["sysctl", "-n", "net.netfilter.nf_conntrack_max"]).strip()
+
+if conntrack_value.isdigit() and int(conntrack_value) >= 262144:
+    ok(f"nf_conntrack_max          {conntrack_value}")
 else:
-    warn("nf_conntrack_max          != 262144")
+    warn(f"nf_conntrack_max          {conntrack_value or 'НЕ ОПРЕДЕЛЁН'} < 262144")
 
 
 if run(["systemctl", "is-active", "netfilter-persistent"]) == "active":
@@ -746,10 +782,55 @@ section("💾 БЭКАПЫ В ОБЛАКО")
 
 rclone_conf = Path.home() / ".config" / "rclone" / "rclone.conf"
 
-if rclone_conf.exists():
-    ok(f"Файл-Токен: {rclone_conf}")
+if rclone_conf.is_file():
+    ok("rclone.conf               НАСТРОЕН")
 else:
-    warn("Файл-Токен rclone          НЕ НАЙДЕН")
+    fail("rclone.conf               НЕ НАЙДЕН — необходимо настроить rclone")
+
+backup_status = run([
+    "systemctl", "show", "zvertbot-backup.service",
+    "-p", "Result", "-p", "ExecMainStatus",
+    "-p", "ExecMainExitTimestamp",
+])
+
+backup_timer = run([
+    "systemctl", "show", "zvertbot-backup.timer",
+    "-p", "ActiveState",
+])
+
+backup_result_ok = (
+    "Result=success" in backup_status
+    and "ExecMainStatus=0" in backup_status
+)
+
+backup_fresh = False
+exit_line = next(
+    (
+        line
+        for line in backup_status.splitlines()
+        if line.startswith("ExecMainExitTimestamp=")
+    ),
+    "",
+)
+
+if exit_line:
+    try:
+        timestamp = exit_line.split("=", 1)[1].strip()
+        exit_timestamp = run(["date", "-d", timestamp, "+%s"])
+
+        if exit_timestamp.isdigit():
+            backup_fresh = (
+                time.time() - int(exit_timestamp)
+            ) <= 26 * 60 * 60
+    except (ValueError, OverflowError):
+        backup_fresh = False
+
+backup_timer_ok = "ActiveState=active" in backup_timer
+
+if backup_result_ok and backup_fresh and backup_timer_ok:
+    ok("backup service             ПОСЛЕДНИЙ ЗАПУСК OK")
+else:
+    fail("backup service             ТРЕБУЕТ ПРОВЕРКИ")
 
 
 section("🔐 XRAY")
@@ -781,17 +862,19 @@ else:
     fail("awg binary                НЕ НАЙДЕН")
 
 
-if run(["modinfo", "amneziawg"]):
+if Path("/sys/module/amneziawg").exists():
     ok("kernel module amneziawg   ЗАГРУЖЕН")
+elif run(["modinfo", "amneziawg"]):
+    warn("kernel module amneziawg   НЕ ЗАГРУЖЕН (модуль доступен)")
 else:
-    warn("kernel module amneziawg   НЕ ЗАГРУЖЕН")
+    warn("kernel module amneziawg   НЕ НАЙДЕН")
 
 
 for iface in discover_awg_interfaces():
     if run(["awg", "show", iface]):
         ok(f"{iface} интерфейс АКТИВЕН")
     else:
-        warn(f"{iface} интерфейс НЕ АКТИВЕН или не существует")
+        fail(f"{iface} интерфейс НЕ АКТИВЕН или не существует")
 
 
 # ============================================================
@@ -810,7 +893,7 @@ def check_json_endpoint(url, name):
 
         return obj
 
-    except (OSError, json.JSONDecodeError) as e:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
         warn(f"{name:<25} ОШИБКА ДАННЫХ ({e})")
         return None
 
@@ -824,7 +907,10 @@ vps_status = check_json_endpoint(
     "vps-status.json",
 )
 
-if vps_status:
+if vps_status is not None and not isinstance(vps_status, dict):
+    warn("vps-status.json          НЕКОРРЕКТНЫЙ ФОРМАТ: ожидается JSON-объект")
+
+if isinstance(vps_status, dict):
     required_fields = (
         "server",
         "system",
@@ -907,8 +993,8 @@ for name, path in [
         INSTALL_DIR / "hass/geo/geoip.json",
     ),
 ]:
-    if path.exists():
-        age = int(time.time() - path.stat().st_mtime)
+    if path.is_file():
+        age = max(0, int(time.time() - path.stat().st_mtime))
 
         if age < 3600:
             ok(f"{name:<15} СВЕЖИЙ ({age}s)")

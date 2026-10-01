@@ -16,7 +16,6 @@ def _get_expected_ports() -> dict[str, dict[str, str]]:
     expected = {
         # TCP
         "22": {"proto": "TCP", "service": "sshd", "desc": "SSH управление"},
-        "8085": {"proto": "TCP", "service": "zvertbot", "desc": "Telegram-бот"},
         "8080": {"proto": "TCP", "service": "stats-http", "desc": "Метрики VPS -> HA"},
         "10085": {"proto": "TCP", "service": "xray-api", "desc": "gRPC StatsService"},
         "3001": {"proto": "TCP", "service": "uptime-kuma", "desc": "Веб-дашборд Kuma"},
