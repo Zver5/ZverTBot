@@ -6,25 +6,82 @@ services/port_scanner.py
 
 import subprocess
 
+from services.vps_monitor import _discover_awg_units
+from services.xray.config_manager import get_vless_inbounds, load_xray_config
 from utils.logger import logger
 
-# Ожидаемые порты (из SERVER-PASSPORT.md)
-EXPECTED_PORTS = {
-    # TCP внешние
-    "22": {"proto": "TCP", "service": "sshd", "desc": "SSH управление"},
-    "443": {"proto": "TCP", "service": "xray", "desc": "VLESS+REALITY MTS"},
-    "2096": {"proto": "TCP", "service": "xray", "desc": "VLESS+REALITY Beeline"},
-    "8085": {"proto": "TCP", "service": "zvertbot", "desc": "Telegram-бот"},
-    # UDP внешние
-    "58352": {"proto": "UDP", "service": "amneziawg", "desc": "AmneziaWG основной"},
-    "5802": {"proto": "UDP", "service": "amneziawg", "desc": "AmneziaWG тестовый"},
-    "51878": {"proto": "UDP", "service": "wireguard", "desc": "WireGuard обычный"},
-    # TCP локальные
-    "8080": {"proto": "TCP", "service": "stats-http", "desc": "Метрики VPS -> HA"},
-    "10085": {"proto": "TCP", "service": "xray-api", "desc": "gRPC StatsService"},
-    # Docker
-    "3001": {"proto": "TCP", "service": "uptime-kuma", "desc": "Веб-дашборд Kuma"},
-}
+
+def _get_expected_ports() -> dict[str, dict[str, str]]:
+    """Build expected ports from static services and current VPN configuration."""
+    expected = {
+        # TCP
+        "22": {"proto": "TCP", "service": "sshd", "desc": "SSH управление"},
+        "8085": {"proto": "TCP", "service": "zvertbot", "desc": "Telegram-бот"},
+        "8080": {"proto": "TCP", "service": "stats-http", "desc": "Метрики VPS -> HA"},
+        "10085": {"proto": "TCP", "service": "xray-api", "desc": "gRPC StatsService"},
+        "3001": {"proto": "TCP", "service": "uptime-kuma", "desc": "Веб-дашборд Kuma"},
+    }
+
+    try:
+        for index, inbound in enumerate(
+            get_vless_inbounds(load_xray_config()), start=1
+        ):
+            if not isinstance(inbound, dict):
+                continue
+
+            try:
+                port = str(int(inbound["port"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+
+            tag = inbound.get("tag") or f"VLESS inbound #{index}"
+            expected[port] = {
+                "proto": "TCP",
+                "service": "xray",
+                "desc": f"VLESS+REALITY ({tag})",
+            }
+    except Exception as e:
+        logger.warning("port_scanner.xray_discovery.failed | error=%s", e)
+
+    awg_units = _discover_awg_units()
+
+    if awg_units:
+        for unit in awg_units:
+            interface = unit.split("@", 1)[1] if "@" in unit else unit
+
+            try:
+                result = subprocess.run(
+                    ["awg", "show", interface],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=False,
+                )
+            except Exception as e:
+                logger.warning(
+                    "port_scanner.awg_discovery.failed | unit=%s error=%s",
+                    unit,
+                    e,
+                )
+                continue
+
+            if result.returncode != 0:
+                continue
+
+            for line in result.stdout.splitlines():
+                if not line.strip().startswith("listening port:"):
+                    continue
+
+                port = line.split(":", 1)[1].strip()
+                if port.isdigit():
+                    expected[port] = {
+                        "proto": "UDP",
+                        "service": "amneziawg",
+                        "desc": f"AmneziaWG ({interface})",
+                    }
+                break
+
+    return expected
 
 
 def scan_open_ports():
@@ -93,13 +150,17 @@ def scan_open_ports():
         open_ports = list(unique_ports.values())
 
         # Классифицируем порты
+        expected_ports = _get_expected_ports()
         expected_found = []
         suspicious = []
 
         for p in open_ports:
             port = p["port"]
-            if port in EXPECTED_PORTS:
-                exp = EXPECTED_PORTS[port]
+            if (
+                port in expected_ports
+                and p["proto"] == expected_ports[port]["proto"]
+            ):
+                exp = expected_ports[port]
                 expected_found.append(
                     {
                         "port": port,

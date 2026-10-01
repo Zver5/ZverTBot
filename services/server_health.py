@@ -5,6 +5,7 @@
 import shutil
 import subprocess
 
+from services.vps_monitor import _discover_awg_units
 from utils.service_control import get_service_state
 
 
@@ -49,11 +50,17 @@ def collect_server_health() -> str:
         "zvertbot",
         "fail2ban",
         "stats-http",
-        "awg-quick@awg0",
     ]:
         status = get_service_state(service)
-
         parts.append(f"{service}: {status or 'unknown'}")
+
+    awg_units = _discover_awg_units()
+    if awg_units:
+        for service in awg_units:
+            status = get_service_state(service)
+            parts.append(f"{service}: {status or 'unknown'}")
+    else:
+        parts.append("awg: no units detected")
 
     parts.append("\n=== SECURITY EVENTS ===")
 

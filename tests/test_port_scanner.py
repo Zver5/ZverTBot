@@ -3,8 +3,15 @@ from unittest.mock import Mock, patch
 from services.port_scanner import scan_open_ports
 
 
+@patch(
+    "services.port_scanner._get_expected_ports",
+    return_value={
+        "22": {"proto": "TCP", "service": "sshd", "desc": "SSH управление"},
+        "443": {"proto": "TCP", "service": "xray", "desc": "VLESS+REALITY"},
+    },
+)
 @patch("services.port_scanner.subprocess.run")
-def test_scan_ports_expected_only(mock_run):
+def test_scan_ports_expected_only(mock_run, mock_expected):
     mock_run.side_effect = [
         Mock(
             stdout=(
@@ -26,8 +33,9 @@ def test_scan_ports_expected_only(mock_run):
     assert "Ожидаемых: 2" in text
 
 
+@patch("services.port_scanner._get_expected_ports", return_value={})
 @patch("services.port_scanner.subprocess.run")
-def test_scan_ports_with_suspicious(mock_run):
+def test_scan_ports_with_suspicious(mock_run, mock_expected):
     mock_run.side_effect = [
         Mock(
             stdout=(
@@ -47,8 +55,18 @@ def test_scan_ports_with_suspicious(mock_run):
     assert "Подозрительные порты" in text
 
 
+@patch(
+    "services.port_scanner._get_expected_ports",
+    return_value={
+        "58352": {
+            "proto": "UDP",
+            "service": "amneziawg",
+            "desc": "AmneziaWG (awg0)",
+        },
+    },
+)
 @patch("services.port_scanner.subprocess.run")
-def test_scan_ports_udp(mock_run):
+def test_scan_ports_udp(mock_run, mock_expected):
     mock_run.side_effect = [
         Mock(
             stdout="State Recv-Q Send-Q Local Address:Port Peer Address:Port Process\n"
@@ -67,8 +85,14 @@ def test_scan_ports_udp(mock_run):
     assert "AmneziaWG" in text
 
 
+@patch(
+    "services.port_scanner._get_expected_ports",
+    return_value={
+        "22": {"proto": "TCP", "service": "sshd", "desc": "SSH управление"},
+    },
+)
 @patch("services.port_scanner.subprocess.run")
-def test_scan_ports_remove_duplicates(mock_run):
+def test_scan_ports_remove_duplicates(mock_run, mock_expected):
     mock_run.side_effect = [
         Mock(
             stdout=(
@@ -87,8 +111,9 @@ def test_scan_ports_remove_duplicates(mock_run):
     assert "Всего открытых: 1" in text
 
 
+@patch("services.port_scanner._get_expected_ports", return_value={})
 @patch("services.port_scanner.subprocess.run")
-def test_scan_ports_skip_non_listen(mock_run):
+def test_scan_ports_skip_non_listen(mock_run, mock_expected):
     mock_run.side_effect = [
         Mock(
             stdout=(
@@ -106,8 +131,9 @@ def test_scan_ports_skip_non_listen(mock_run):
     assert "Всего открытых: 0" in text
 
 
+@patch("services.port_scanner._get_expected_ports", return_value={})
 @patch("services.port_scanner.subprocess.run")
-def test_scan_ports_unknown_process(mock_run):
+def test_scan_ports_unknown_process(mock_run, mock_expected):
     mock_run.side_effect = [
         Mock(
             stdout=(
@@ -125,8 +151,9 @@ def test_scan_ports_unknown_process(mock_run):
     assert "unknown" in text
 
 
+@patch("services.port_scanner._get_expected_ports", return_value={})
 @patch("services.port_scanner.subprocess.run")
-def test_scan_ports_udp_skips_wildcard(mock_run):
+def test_scan_ports_udp_skips_wildcard(mock_run, mock_expected):
     mock_run.side_effect = [
         Mock(
             stdout="State Recv-Q Send-Q Local Address:Port Peer Address:Port Process\n"
@@ -144,8 +171,9 @@ def test_scan_ports_udp_skips_wildcard(mock_run):
     assert "Всего открытых: 0" in text
 
 
+@patch("services.port_scanner._get_expected_ports", return_value={})
 @patch("services.port_scanner.subprocess.run")
-def test_scan_ports_udp_skips_non_wildcard_address(mock_run):
+def test_scan_ports_udp_skips_non_wildcard_address(mock_run, mock_expected):
     mock_run.side_effect = [
         Mock(
             stdout="State Recv-Q Send-Q Local Address:Port Peer Address:Port Process\n"
