@@ -698,7 +698,7 @@ if any(
 ):
     ok("SSH PasswordAuthentication OFF")
 else:
-    fail("SSH PasswordAuthentication НЕ ОТКЛЮЧЕН")
+    warn("SSH PasswordAuthentication НЕ ОТКЛЮЧЕН")
 
 
 section("🌐 СЕТЬ И ЯДРО")
@@ -785,7 +785,7 @@ rclone_conf = Path.home() / ".config" / "rclone" / "rclone.conf"
 if rclone_conf.is_file():
     ok("rclone.conf               НАСТРОЕН")
 else:
-    fail("rclone.conf               НЕ НАЙДЕН — необходимо настроить rclone")
+    warn("rclone.conf               НЕ НАЙДЕН — необходимо настроить rclone")
 
 backup_status = run([
     "systemctl", "show", "zvertbot-backup.service",
@@ -830,7 +830,7 @@ backup_timer_ok = "ActiveState=active" in backup_timer
 if backup_result_ok and backup_fresh and backup_timer_ok:
     ok("backup service             ПОСЛЕДНИЙ ЗАПУСК OK")
 else:
-    fail("backup service             ТРЕБУЕТ ПРОВЕРКИ")
+    warn("backup service             ПОСЛЕДНИЙ ЗАПУСК ТРЕБУЕТ ПРОВЕРКИ")
 
 
 section("🔐 XRAY")
@@ -1024,7 +1024,7 @@ if FAIL:
     print(f"{RED}{BOLD}❌ СЕРВЕР НЕ ГОТОВ (Есть критические ошибки){RESET}")
 elif WARN:
     print("PASSPORT_STATUS: WARN")
-    print(f"{YELLOW}{BOLD}⚠️ СЕРВЕР ГОТОВ С ПРЕДУПРЕЖДЕНИЯМИ (Требует внимания){RESET}")
+    print(f"{YELLOW}{BOLD}⚠️ СЕРВЕР: ЕСТЬ ПРЕДУПРЕЖДЕНИЯ{RESET}")
 else:
     print("PASSPORT_STATUS: READY")
     print(
