@@ -702,7 +702,7 @@ def test_ai_server_health_success(monkeypatch):
 
     monkeypatch.setattr(
         management,
-        "collect_server_health",
+        "collect_server_health_for_ai",
         lambda: "HEALTH",
     )
     monkeypatch.setattr(
@@ -741,7 +741,7 @@ def test_ai_server_health_error(monkeypatch):
 
     monkeypatch.setattr(
         management,
-        "collect_server_health",
+        "collect_server_health_for_ai",
         lambda: (_ for _ in ()).throw(RuntimeError("health failed")),
     )
     monkeypatch.setattr(management, "ai_diagnosis_menu_kb", lambda: "KB")

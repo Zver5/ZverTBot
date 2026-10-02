@@ -5,7 +5,7 @@
 import shutil
 import subprocess
 
-from services.vps_monitor import _discover_awg_units
+from services.vps_monitor import _discover_awg_units, check_all
 from utils.service_control import get_service_state
 
 
@@ -20,6 +20,35 @@ def _run(cmd: list[str], timeout: int = 5) -> str:
         return result.stdout.strip()
     except Exception:
         return ""
+
+
+def collect_monitoring_facts() -> str:
+    """Возвращает компактные результаты всех проверок VPS-мониторинга."""
+    try:
+        results = check_all()
+    except Exception:
+        return "MONITORING FACT | checks unavailable"
+
+    if not results:
+        return "MONITORING FACT | no checks returned"
+
+    facts = []
+
+    for result in results:
+        status = "OK" if result.healthy else "FAIL"
+        failure = (
+            f" | failure={result.failure.value}"
+            if result.failure is not None
+            else ""
+        )
+        details = result.details or "no details"
+        facts.append(
+            "MONITORING FACT | "
+            f"{result.name} | category={result.category.value} | "
+            f"status={status} | {details}{failure}"
+        )
+
+    return "\n".join(facts)
 
 
 def collect_server_health() -> str:
@@ -111,3 +140,14 @@ def collect_server_health() -> str:
         parts.append("iptables not installed")
 
     return "\n".join(parts)
+
+
+def collect_server_health_for_ai() -> str:
+    """Добавляет к отчёту сервера подтверждённые результаты мониторинга."""
+    return "\n".join(
+        [
+            collect_server_health(),
+            "\n=== MONITORING FACTS ===",
+            collect_monitoring_facts(),
+        ]
+    )

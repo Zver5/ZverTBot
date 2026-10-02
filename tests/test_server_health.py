@@ -163,3 +163,60 @@ def test_collect_server_health_handles_missing_iptables(monkeypatch):
     result = server_health.collect_server_health()
 
     assert "iptables not installed" in result
+
+
+def test_collect_monitoring_facts_formats_check_results(monkeypatch):
+    from services.vps_monitor import MonitorCategory, MonitorFailure, MonitorResult
+
+    monkeypatch.setattr(
+        server_health,
+        "check_all",
+        lambda: [
+            MonitorResult(
+                name="xray",
+                category=MonitorCategory.OPTIONAL,
+                healthy=False,
+                details="active; TCP 443 unreachable",
+                failure=MonitorFailure.TCP_FAILED,
+            ),
+            MonitorResult(
+                name="stats-http",
+                category=MonitorCategory.CRITICAL,
+                healthy=True,
+                details="HTTP 200",
+            ),
+        ],
+    )
+
+    result = server_health.collect_monitoring_facts()
+
+    assert "MONITORING FACT | xray | category=optional | status=FAIL" in result
+    assert "failure=tcp_failed" in result
+    assert "MONITORING FACT | stats-http | category=critical | status=OK" in result
+
+
+def test_collect_server_health_for_ai_appends_monitoring(monkeypatch):
+    monkeypatch.setattr(server_health, "collect_server_health", lambda: "HEALTH")
+    monkeypatch.setattr(
+        server_health,
+        "collect_monitoring_facts",
+        lambda: "MONITORING FACT | xray | status=OK",
+    )
+
+    result = server_health.collect_server_health_for_ai()
+
+    assert result == (
+        "HEALTH\n\n=== MONITORING FACTS ===\n"
+        "MONITORING FACT | xray | status=OK"
+    )
+
+
+def test_collect_monitoring_facts_hides_check_exception_details(monkeypatch):
+    def fail():
+        raise RuntimeError("secret internal detail")
+
+    monkeypatch.setattr(server_health, "check_all", fail)
+
+    assert server_health.collect_monitoring_facts() == (
+        "MONITORING FACT | checks unavailable"
+    )

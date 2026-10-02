@@ -39,6 +39,15 @@ IMPORTANT_LOG_KEYWORDS = (
 MAX_ANALYSIS_CHARS = 3500
 LLM_REQUEST_TIMEOUT = 60
 
+SERVER_SECTION_BUDGETS = {
+    "SYSTEM": 700,
+    "SERVICES": 700,
+    "MONITORING FACTS": 1500,
+    "SECURITY EVENTS": 1100,
+    "SYSTEM ERRORS": 1300,
+    "FIREWALL": 400,
+}
+
 
 _SECRET_PATTERNS = (
     re.compile(
@@ -115,6 +124,61 @@ def prepare_logs_for_analysis(logs: str) -> str:
             break
 
     return "\n".join(result)
+
+
+def _truncate_section(text: str, limit: int) -> str:
+    """Ограничивает размер секции, сохраняя начало и конец."""
+    if len(text) <= limit:
+        return text
+
+    if limit <= 20:
+        return text[:limit]
+
+    head = max(1, limit // 3)
+    tail = limit - head - 3
+    return text[:head] + "..." + text[-tail:]
+
+
+def prepare_server_health_for_analysis(report: str) -> str:
+    """Сохраняет ключевые секции серверного отчёта перед отправкой в LLM."""
+    sanitized = sanitize_logs(report)
+    sections = re.split(r"(?m)^=== (.+?) ===\s*$", sanitized)
+
+    if len(sections) < 3:
+        return prepare_logs_for_analysis(sanitized)
+
+    parsed = {}
+    for index in range(1, len(sections), 2):
+        name = sections[index].strip()
+        body = sections[index + 1].strip() if index + 1 < len(sections) else ""
+        parsed[name] = body
+
+    result = []
+    used = 0
+    separator = "\n\n"
+
+    for name, limit in SERVER_SECTION_BUDGETS.items():
+        body = parsed.get(name)
+        if body is None:
+            continue
+
+        section = f"=== {name} ===\n{_truncate_section(body, limit)}"
+        separator_size = len(separator) if result else 0
+        remaining = MAX_LOG_CHARS - used - separator_size
+
+        if remaining <= 0:
+            break
+
+        if len(section) > remaining:
+            section = section[:remaining].rstrip()
+
+        result.append(section)
+        used += separator_size + len(section)
+
+    if not result:
+        return prepare_logs_for_analysis(sanitized)
+
+    return "\n\n".join(result)
 
 
 def _get_analysis_from_response(result: dict) -> str | None:
@@ -282,7 +346,10 @@ def analyze_logs_with_llm(logs: str, service_name: str) -> str:
     if not logs or not logs.strip():
         return "📭 Логи пусты, нечего анализировать."
 
-    logs_prepared = prepare_logs_for_analysis(logs)
+    if service_name == "server":
+        logs_prepared = prepare_server_health_for_analysis(logs)
+    else:
+        logs_prepared = prepare_logs_for_analysis(logs)
 
     system_prompt = (
         "Ты эксперт по диагностике Linux-сервисов и системных логов. "
@@ -297,6 +364,12 @@ def analyze_logs_with_llm(logs: str, service_name: str) -> str:
         "В разделе рекомендация предлагай действия только для подтверждённых проблем. "
         "Не предлагай универсальные меры безопасности без связи с найденной проблемой. "
         "Обычные DEBUG-сообщения успешной работы не считать ошибками. "
+        "Если присутствует секция MONITORING FACTS, считай её результаты "
+        "авторитетными локальными проверками состояния. "
+        "Не объявляй сервис неработающим, если локальная "
+        "проверка показывает status=OK. "
+        "Если локальная проверка показывает status=FAIL, считай это подтверждённым "
+        "фактом и опирайся на указанную причину failure и details. "
         "Ответ давай на русском языке, структурированно, с эмодзи для наглядности. "
         "Не используй Markdown-разметку со звёздочками, обратными кавычками "
         "или HTML-тегами."

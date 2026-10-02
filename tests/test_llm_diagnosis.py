@@ -196,6 +196,36 @@ class TestFilterUnconfirmedRecommendations:
         assert "Проверить подключение к базе" in result
 
 
+def test_prepare_server_health_for_analysis_preserves_all_key_sections():
+    from services import llm_diagnosis
+
+    report = "\n\n".join(
+        [
+            "=== SYSTEM ===\nUptime: up 3 days\nLoad: 0.12 0.20 0.18",
+            "=== SERVICES ===\nxray: active\nzvertbot: active",
+            (
+                "=== MONITORING FACTS ===\n"
+                "MONITORING FACT | xray | category=optional | "
+                "status=FAIL | active; TCP 443 unreachable | failure=tcp_failed"
+            ),
+            "=== SECURITY EVENTS ===\nSSH preauth event",
+            "=== SYSTEM ERRORS ===\nXray error",
+            "=== FIREWALL ===\nRules lines: 12",
+        ]
+    )
+
+    result = llm_diagnosis.prepare_server_health_for_analysis(report)
+
+    assert len(result) <= llm_diagnosis.MAX_LOG_CHARS
+    assert "=== SYSTEM ===" in result
+    assert "=== SERVICES ===" in result
+    assert "=== MONITORING FACTS ===" in result
+    assert "status=FAIL" in result
+    assert "=== SECURITY EVENTS ===" in result
+    assert "=== SYSTEM ERRORS ===" in result
+    assert "=== FIREWALL ===" in result
+
+
 class TestGetAnalysisFromResponse:
     def test_valid_response(self):
         result = {
@@ -345,6 +375,51 @@ class TestAnalyzeLogsWithLLM:
         response.raise_for_status.assert_called_once()
         assert post.call_args.kwargs["timeout"] == llm_diagnosis.LLM_REQUEST_TIMEOUT
         assert post.call_args.kwargs["json"]["model"] == llm_diagnosis.LLM_MODEL
+
+    def test_server_analysis_sends_monitoring_facts_as_structured_context(self):
+        response = Mock()
+        response.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": "Найдена подтверждённая проблема.",
+                    },
+                },
+            ],
+        }
+        report = (
+            "=== SYSTEM ===\nUptime: up 3 days\n"
+            "=== SERVICES ===\nxray: active\n"
+            "=== MONITORING FACTS ===\n"
+            "MONITORING FACT | xray | category=optional | "
+            "status=FAIL | active; TCP 443 unreachable | failure=tcp_failed\n"
+            "=== SECURITY EVENTS ===\nNo SSH events\n"
+            "=== SYSTEM ERRORS ===\nNo system errors\n"
+            "=== FIREWALL ===\nRules lines: 12"
+        )
+
+        with (
+            patch.object(llm_diagnosis, "LLM_API_KEY", "test-key"),
+            patch.object(
+                llm_diagnosis.requests,
+                "post",
+                return_value=response,
+            ) as post,
+        ):
+            result = llm_diagnosis.analyze_logs_with_llm(report, "server")
+
+        payload = post.call_args.kwargs["json"]
+        system_prompt = payload["messages"][0]["content"]
+        user_prompt = payload["messages"][1]["content"]
+
+        assert result == (
+            "🤖 AI-анализ логов server:\n\n"
+            "Найдена подтверждённая проблема."
+        )
+        assert "MONITORING FACTS" in user_prompt
+        assert "status=FAIL" in user_prompt
+        assert "failure=tcp_failed" in user_prompt
+        assert "авторитетными локальными проверками состояния" in system_prompt
 
     def test_falls_back_to_next_model_when_model_not_found(self):
         unavailable_response = Mock()
