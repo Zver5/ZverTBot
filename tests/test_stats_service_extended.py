@@ -42,6 +42,174 @@ def test_build_status_text_ok(monkeypatch, tmp_path):
     assert "не установлен" in text
 
 
+def test_build_status_text_includes_external_monitors(
+    monkeypatch,
+    tmp_path,
+):
+    stats = tmp_path / "stats.json"
+    cache = tmp_path / "vps_external_monitor.json"
+
+    stats.write_text(
+        json.dumps(
+            {
+                "cpu": 10.5,
+                "mem": 20.2,
+                "disk": {"percent": 30.3},
+                "vpn_total_gb": 12.34,
+                "services": {"xray": 1},
+            }
+        )
+    )
+
+    cache.write_text(
+        json.dumps(
+            {
+                "home_assistant": {
+                    "name": "Home Assistant",
+                    "icon": "🏠",
+                    "healthy": True,
+                    "details": "HTTP 200",
+                    "latency_ms": 42,
+                },
+                "qnap": {
+                    "name": "QNAP",
+                    "icon": "🗄️",
+                    "healthy": False,
+                    "details": "connection refused",
+                    "latency_ms": None,
+                },
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        st,
+        "load_prepared_vps_payload",
+        lambda: json.loads(stats.read_text()),
+    )
+    monkeypatch.setattr(st, "EXTERNAL_MONITOR_CACHE_FILE", cache)
+    monkeypatch.setattr(st, "HA_MONITOR_URL", "http://127.0.0.1:8123")
+    monkeypatch.setattr(st, "QNAP_MONITOR_URL", "http://127.0.0.1:8888")
+
+    text = st._build_status_text()
+
+    assert "🌐 Внешние сервисы:" in text
+    assert "🟢 🏠 Home Assistant — HTTP 200 · 42 мс" in text
+    assert "🔴 🗄️ QNAP — connection refused" in text
+
+
+def test_build_status_text_hides_disabled_external_monitor(
+    monkeypatch,
+    tmp_path,
+):
+    stats = tmp_path / "stats.json"
+    cache = tmp_path / "vps_external_monitor.json"
+
+    stats.write_text(
+        json.dumps(
+            {
+                "cpu": 10.5,
+                "mem": 20.2,
+                "disk": {"percent": 30.3},
+                "vpn_total_gb": 12.34,
+                "services": {"xray": 1},
+            }
+        )
+    )
+
+    cache.write_text(
+        json.dumps(
+            {
+                "home_assistant": {
+                    "name": "Home Assistant",
+                    "icon": "🏠",
+                    "healthy": True,
+                    "details": "HTTP 200",
+                    "latency_ms": 42,
+                },
+                "qnap": {
+                    "name": "QNAP",
+                    "icon": "🗄️",
+                    "healthy": True,
+                    "details": "HTTP 200",
+                    "latency_ms": 18,
+                },
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        st,
+        "load_prepared_vps_payload",
+        lambda: json.loads(stats.read_text()),
+    )
+    monkeypatch.setattr(st, "EXTERNAL_MONITOR_CACHE_FILE", cache)
+    monkeypatch.setattr(st, "HA_MONITOR_URL", "")
+    monkeypatch.setattr(st, "QNAP_MONITOR_URL", "http://127.0.0.1:8888")
+
+    text = st._build_status_text()
+
+    assert "QNAP" in text
+    assert "Home Assistant" not in text
+    assert "🌐 Внешние сервисы:" in text
+
+
+def test_build_status_text_has_no_external_section_when_disabled(
+    monkeypatch,
+    tmp_path,
+):
+    stats = tmp_path / "stats.json"
+    cache = tmp_path / "vps_external_monitor.json"
+
+    stats.write_text(
+        json.dumps(
+            {
+                "cpu": 10.5,
+                "mem": 20.2,
+                "disk": {"percent": 30.3},
+                "vpn_total_gb": 12.34,
+                "services": {"xray": 1},
+            }
+        )
+    )
+
+    cache.write_text(
+        json.dumps(
+            {
+                "home_assistant": {
+                    "name": "Home Assistant",
+                    "icon": "🏠",
+                    "healthy": True,
+                    "details": "HTTP 200",
+                    "latency_ms": 42,
+                },
+                "qnap": {
+                    "name": "QNAP",
+                    "icon": "🗄️",
+                    "healthy": True,
+                    "details": "HTTP 200",
+                    "latency_ms": 18,
+                },
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        st,
+        "load_prepared_vps_payload",
+        lambda: json.loads(stats.read_text()),
+    )
+    monkeypatch.setattr(st, "EXTERNAL_MONITOR_CACHE_FILE", cache)
+    monkeypatch.setattr(st, "HA_MONITOR_URL", "")
+    monkeypatch.setattr(st, "QNAP_MONITOR_URL", "")
+
+    text = st._build_status_text()
+
+    assert "🌐 Внешние сервисы:" not in text
+    assert "Home Assistant" not in text
+    assert "QNAP" not in text
+
+
 def test_build_status_text_missing_file(monkeypatch):
     monkeypatch.setattr(
         st,

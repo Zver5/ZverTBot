@@ -188,28 +188,37 @@ def test_awg_service_not_installed(mock_exists, mock_which):
 
 @patch("services.system.shutil.which")
 @patch("services.system.service_exists")
+@patch("services.system._discover_awg_units")
 @patch("services.system.subprocess.run")
-def test_awg_empty_output(mock_run, mock_exists, mock_which):
+def test_awg_empty_output(mock_run, mock_discover, mock_exists, mock_which):
     mock_which.return_value = "/usr/bin/awg"
     mock_exists.return_value = True
+    mock_discover.return_value = ["awg-quick@awg0"]
     mock_run.return_value = Mock(stdout="")
 
     text = get_service_logs("awg")
 
-    assert "AWG awg0 не отвечает" in text
+    assert "awg0: интерфейс не отвечает" in text
 
 
 @patch("services.system.shutil.which")
 @patch("services.system.service_exists")
+@patch("services.system._discover_awg_units")
 @patch("services.system.subprocess.run")
-def test_awg_success_strips_ansi(mock_run, mock_exists, mock_which):
+def test_awg_success_strips_ansi(
+    mock_run, mock_discover, mock_exists, mock_which
+):
     mock_which.return_value = "/usr/bin/awg"
     mock_exists.return_value = True
-    mock_run.return_value = Mock(stdout="\x1b[32minterface: awg0\x1b[0m\npeer: test")
+    mock_discover.return_value = ["awg-quick@awg0"]
+    mock_run.return_value = Mock(
+        stdout="\x1b[32minterface: awg0\x1b[0m\npeer: test"
+    )
 
     text = get_service_logs("awg")
 
-    assert "AWG статус awg0" in text
+    assert "AWG статус" in text
+    assert "AWG awg0:" in text
     assert "interface: awg0" in text
     assert "peer: test" in text
     assert "\x1b" not in text

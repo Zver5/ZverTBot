@@ -30,7 +30,10 @@ from services.client_service import show_history_action
 from services.ip_server import start_ip_server_once
 from services.ip_tokens import create_ip_token
 from services.llm_diagnosis import analyze_logs_with_llm
-from services.server_health import collect_server_health_for_ai
+from services.server_health import (
+    collect_monitoring_facts_for_service,
+    collect_server_health_for_ai,
+)
 from services.stats import (
     get_bot_stats_text,
     get_client_stats_text,
@@ -899,7 +902,18 @@ def handle_ai_diagnosis_callback(bot, cid, call, data):
 
         try:
             logs = get_service_logs(service_name)
-            result = analyze_logs_with_llm(logs, service_name)
+            monitoring_facts = collect_monitoring_facts_for_service(service_name)
+
+            analysis_input = (
+                monitoring_facts
+                + "\n\n"
+                + logs
+            )
+
+            result = analyze_logs_with_llm(
+                analysis_input,
+                service_name,
+            )
 
             safe_edit_message(
                 bot,

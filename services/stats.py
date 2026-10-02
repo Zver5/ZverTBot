@@ -4,7 +4,15 @@ services/stats.py
 Функции: статистика бота, статистика клиента, статус VPS.
 """
 
-from config import BOT_NAME, BOT_VERSION
+import json
+
+from config import (
+    BOT_NAME,
+    BOT_VERSION,
+    HA_MONITOR_URL,
+    QNAP_MONITOR_URL,
+)
+from config.paths import DATA_DIR
 from core.navigation import NAV_BACK_CALLBACK, NAV_HOME_CALLBACK
 from data.storage import load_awg_registry, load_stats
 from data.traffic import get_client_traffic, load_usage
@@ -12,6 +20,57 @@ from services.awg.runtime import get_runtime_peers
 from services.vps_status_source import load_prepared_vps_payload
 from utils.helpers import escape_md, fmt_traffic
 from utils.logger import logger
+
+EXTERNAL_MONITOR_CACHE_FILE = DATA_DIR / "vps_external_monitor.json"
+
+
+def _load_external_monitor_cache() -> dict:
+    try:
+        data = json.loads(
+            EXTERNAL_MONITOR_CACHE_FILE.read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    return data if isinstance(data, dict) else {}
+
+
+def _build_external_monitor_lines() -> list[str]:
+    monitors = _load_external_monitor_cache()
+    lines = []
+
+    configured = {
+        "home_assistant": HA_MONITOR_URL,
+        "qnap": QNAP_MONITOR_URL,
+    }
+
+    for key in ("home_assistant", "qnap"):
+        if not configured[key]:
+            continue
+
+        item = monitors.get(key)
+        if not isinstance(item, dict):
+            continue
+
+        icon = item.get("icon", "🌐")
+        name = item.get("name", key)
+        healthy = item.get("healthy")
+        details = item.get("details", "")
+
+        if healthy:
+            status_icon = "🟢"
+        else:
+            status_icon = "🔴"
+
+        latency = item.get("latency_ms")
+        if healthy and latency is not None:
+            details = f"{details} · {latency} мс"
+
+        lines.append(
+            f"{status_icon} {icon} {name} — {details or 'нет данных'}"
+        )
+
+    return lines
 
 
 def _build_status_text():
@@ -73,6 +132,15 @@ def _build_status_text():
 
             svc_lines.append(f"{icon} {BT}{service}{BT} — {status}")
 
+        external_lines = _build_external_monitor_lines()
+
+        external_section = ""
+        if external_lines:
+            external_section = (
+                f"{NL}{NL}🌐 Внешние сервисы:{NL}{NL}"
+                f"{NL.join(external_lines)}"
+            )
+
         return (
             f"📊 *VPS ОТЧЕТ:*{NL}"
             f"🐺 {BOT_NAME}: v{BOT_VERSION}{NL}{NL}"
@@ -84,6 +152,7 @@ def _build_status_text():
             f"💿 Disk: {BT}{disk_pct}{BT}{NL}"
             f"📈 Трафик: {traffic}{NL}"
             f"🔹 Службы:{NL}{NL.join(svc_lines)}"
+            f"{external_section}"
         )
     except Exception as e:
         return f"❌ Ошибка: {BT}{e!s}{BT}"

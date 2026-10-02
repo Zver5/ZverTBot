@@ -9,13 +9,15 @@ DATA COLLECTORS: xray-traffic-collect, geoip-collect
 import json
 import socket
 import subprocess
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
 from urllib.error import URLError
 from urllib.request import urlopen
 
-from config.paths import RCLONE_STATUS_JSON
+from config import HA_MONITOR_URL, QNAP_MONITOR_URL
+from config.paths import DATA_DIR, RCLONE_STATUS_JSON
 from services.xray.config_manager import load_xray_config
 
 
@@ -119,6 +121,123 @@ def _http_check(
             return False, f"HTTP {status}"
     except (OSError, URLError) as exc:
         return False, str(exc)
+
+
+EXTERNAL_MONITOR_TIMEOUT = 5.0
+EXTERNAL_MONITOR_CACHE_FILE = DATA_DIR / "vps_external_monitor.json"
+
+
+@dataclass(frozen=True)
+class ExternalHttpMonitor:
+    key: str
+    name: str
+    icon: str
+    url: str
+
+
+EXTERNAL_HTTP_MONITORS = tuple(
+    monitor
+    for monitor in (
+        ExternalHttpMonitor(
+            key="home_assistant",
+            name="Home Assistant",
+            icon="🏠",
+            url=HA_MONITOR_URL,
+        ),
+        ExternalHttpMonitor(
+            key="qnap",
+            name="QNAP",
+            icon="🗄️",
+            url=QNAP_MONITOR_URL,
+        ),
+    )
+    if monitor.url
+)
+
+
+def _external_http_check(
+    monitor: ExternalHttpMonitor,
+) -> tuple[bool, str, float | None]:
+    started = time.monotonic()
+
+    try:
+        with urlopen(monitor.url, timeout=EXTERNAL_MONITOR_TIMEOUT) as response:
+            status = response.status
+            latency_ms = round((time.monotonic() - started) * 1000)
+
+            if 200 <= status < 400:
+                return True, f"HTTP {status}", latency_ms
+
+            return False, f"HTTP {status}", latency_ms
+
+    except (OSError, URLError) as exc:
+        return False, str(exc), None
+
+
+def _write_external_monitor_cache(
+    monitor: ExternalHttpMonitor,
+    healthy: bool,
+    details: str,
+    latency_ms: float | None,
+) -> None:
+    EXTERNAL_MONITOR_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        cache = json.loads(
+            EXTERNAL_MONITOR_CACHE_FILE.read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError):
+        cache = {}
+
+    if not isinstance(cache, dict):
+        cache = {}
+
+    cache[monitor.key] = {
+        "name": monitor.name,
+        "icon": monitor.icon,
+        "url": monitor.url,
+        "healthy": healthy,
+        "details": details,
+        "latency_ms": latency_ms,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    EXTERNAL_MONITOR_CACHE_FILE.write_text(
+        json.dumps(cache, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def check_external_monitor(
+    monitor: ExternalHttpMonitor,
+) -> MonitorResult:
+    healthy, details, latency_ms = _external_http_check(monitor)
+
+    display_details = details
+    if latency_ms is not None:
+        display_details = f"{details} · {latency_ms} ms"
+
+    _write_external_monitor_cache(
+        monitor,
+        healthy,
+        details,
+        latency_ms,
+    )
+
+    return MonitorResult(
+        name=monitor.key,
+        category=MonitorCategory.OPTIONAL,
+        healthy=healthy,
+        details=display_details,
+        failure=None if healthy else MonitorFailure.HTTP_FAILED,
+    )
+
+
+def check_external_monitors() -> list[MonitorResult]:
+    return [
+        check_external_monitor(monitor)
+        for monitor in EXTERNAL_HTTP_MONITORS
+    ]
 
 
 def check_long_running_service(
@@ -513,4 +632,5 @@ def check_all() -> list[MonitorResult]:
         check_awg_service(),
         check_ssh(),
         check_fail2ban(),
+        *check_external_monitors(),
     ]

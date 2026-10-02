@@ -142,6 +142,57 @@ def collect_server_health() -> str:
     return "\n".join(parts)
 
 
+
+SERVICE_MONITOR_NAMES = {
+    "bot": "zvertbot",
+    "xray": "xray",
+    "awg": "awg",
+}
+
+
+def collect_monitoring_facts_for_service(service_name: str) -> str:
+    """Return authoritative monitoring facts for one AI service."""
+    service = service_name.lower().strip()
+
+    monitor_name = SERVICE_MONITOR_NAMES.get(service)
+    if monitor_name is None:
+        return "=== MONITORING FACTS ===\nNo dedicated monitoring check."
+
+    try:
+        results = check_all()
+    except Exception:
+        return (
+            "=== MONITORING FACTS ===\n"
+            f"MONITORING FACT | {monitor_name} | checks unavailable"
+        )
+
+    matches = [result for result in results if result.name == monitor_name]
+
+    if not matches:
+        return (
+            "=== MONITORING FACTS ===\n"
+            f"MONITORING FACT | {monitor_name} | checks unavailable"
+        )
+
+    lines = ["=== MONITORING FACTS ==="]
+
+    for result in matches:
+        status = "OK" if result.healthy else "FAIL"
+        line = (
+            f"MONITORING FACT | {result.name} | "
+            f"category={result.category} | status={status}"
+        )
+
+        if result.details:
+            line += f" | {result.details}"
+
+        if result.failure:
+            line += f" | failure={result.failure}"
+
+        lines.append(line)
+
+    return "\n".join(lines)
+
 def collect_server_health_for_ai() -> str:
     """Добавляет к отчёту сервера подтверждённые результаты мониторинга."""
     return "\n".join(

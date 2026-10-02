@@ -8,6 +8,7 @@ from services.vps_monitor import (
     CRITICAL_COMPONENTS,
     DATA_COLLECTORS,
     OPTIONAL_COMPONENTS,
+    ExternalHttpMonitor,
     MonitorCategory,
     MonitorFailure,
     MonitorResult,
@@ -16,6 +17,8 @@ from services.vps_monitor import (
     check_all,
     check_awg_service,
     check_backup,
+    check_external_monitor,
+    check_external_monitors,
     check_fail2ban,
     check_long_running_service,
     check_ssh,
@@ -194,6 +197,162 @@ def test_stats_http_http_failure_is_down(mock_systemctl):
 
     assert result.healthy is False
     assert "refused" in result.details
+
+
+def test_external_monitor_http_200_is_healthy(monkeypatch, tmp_path):
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monitor = ExternalHttpMonitor(
+        key="home_assistant",
+        name="Home Assistant",
+        icon="🏠",
+        url="http://127.0.0.1:8123",
+    )
+
+    cache_file = tmp_path / "vps_external_monitor.json"
+    monkeypatch.setattr(
+        "services.vps_monitor.EXTERNAL_MONITOR_CACHE_FILE",
+        cache_file,
+    )
+    monkeypatch.setattr(
+        "services.vps_monitor.urlopen",
+        lambda url, timeout: Response(),
+    )
+    monotonic_values = iter((10.0, 10.042))
+    monkeypatch.setattr(
+        "services.vps_monitor.time.monotonic",
+        lambda: next(monotonic_values),
+    )
+
+    result = check_external_monitor(monitor)
+
+    assert result.name == "home_assistant"
+    assert result.category == MonitorCategory.OPTIONAL
+    assert result.healthy is True
+    assert result.details == "HTTP 200 · 42 ms"
+    assert result.failure is None
+
+    cache = json.loads(cache_file.read_text(encoding="utf-8"))
+    assert cache["home_assistant"]["healthy"] is True
+    assert cache["home_assistant"]["details"] == "HTTP 200"
+    assert cache["home_assistant"]["latency_ms"] == 42
+    assert cache["home_assistant"]["url"] == "http://127.0.0.1:8123"
+
+
+def test_external_monitor_http_500_is_down(monkeypatch, tmp_path):
+    class Response:
+        status = 500
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monitor = ExternalHttpMonitor(
+        key="qnap",
+        name="QNAP",
+        icon="🗄️",
+        url="http://127.0.0.1:8888",
+    )
+
+    monkeypatch.setattr(
+        "services.vps_monitor.EXTERNAL_MONITOR_CACHE_FILE",
+        tmp_path / "vps_external_monitor.json",
+    )
+    monkeypatch.setattr(
+        "services.vps_monitor.urlopen",
+        lambda url, timeout: Response(),
+    )
+    monotonic_values = iter((20.0, 20.018))
+    monkeypatch.setattr(
+        "services.vps_monitor.time.monotonic",
+        lambda: next(monotonic_values),
+    )
+
+    result = check_external_monitor(monitor)
+
+    assert result.healthy is False
+    assert result.details == "HTTP 500 · 18 ms"
+    assert result.failure == MonitorFailure.HTTP_FAILED
+
+
+def test_external_monitor_connection_error_is_down(monkeypatch, tmp_path):
+    monitor = ExternalHttpMonitor(
+        key="home_assistant",
+        name="Home Assistant",
+        icon="🏠",
+        url="http://127.0.0.1:8123",
+    )
+
+    monkeypatch.setattr(
+        "services.vps_monitor.EXTERNAL_MONITOR_CACHE_FILE",
+        tmp_path / "vps_external_monitor.json",
+    )
+
+    def raise_connection_error(url, timeout):
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(
+        "services.vps_monitor.urlopen",
+        raise_connection_error,
+    )
+
+    result = check_external_monitor(monitor)
+
+    assert result.healthy is False
+    assert result.details == "connection refused"
+    assert result.failure == MonitorFailure.HTTP_FAILED
+
+
+def test_check_external_monitors_checks_configured_monitors(monkeypatch):
+    monitors = (
+        ExternalHttpMonitor(
+            key="home_assistant",
+            name="Home Assistant",
+            icon="🏠",
+            url="http://127.0.0.1:8123",
+        ),
+        ExternalHttpMonitor(
+            key="qnap",
+            name="QNAP",
+            icon="🗄️",
+            url="http://127.0.0.1:8888",
+        ),
+    )
+
+    monkeypatch.setattr(
+        "services.vps_monitor.EXTERNAL_HTTP_MONITORS",
+        monitors,
+    )
+
+    results = [
+        MonitorResult(
+            name=monitor.key,
+            category=MonitorCategory.OPTIONAL,
+            healthy=True,
+        )
+        for monitor in monitors
+    ]
+
+    with patch(
+        "services.vps_monitor.check_external_monitor",
+        side_effect=results,
+    ) as mock_check:
+        actual = check_external_monitors()
+
+    assert [result.name for result in actual] == [
+        "home_assistant",
+        "qnap",
+    ]
+    assert mock_check.call_count == 2
 
 
 @patch("services.vps_monitor._systemctl")
@@ -468,6 +627,7 @@ def test_fail2ban_client_failure_is_down(mock_systemctl):
     assert "failed" in result.details
 
 
+@patch("services.vps_monitor.check_external_monitors")
 @patch("services.vps_monitor.check_fail2ban")
 @patch("services.vps_monitor.check_ssh")
 @patch("services.vps_monitor.check_awg_service")
@@ -483,6 +643,7 @@ def test_check_all_contains_only_monitoring_targets(
     mock_awg,
     mock_ssh,
     mock_fail2ban,
+    mock_external,
 ):
     mock_service.return_value = MonitorResult(
         name="zvertbot",
@@ -519,6 +680,18 @@ def test_check_all_contains_only_monitoring_targets(
         category=MonitorCategory.OPTIONAL,
         healthy=True,
     )
+    mock_external.return_value = [
+        MonitorResult(
+            name="home_assistant",
+            category=MonitorCategory.OPTIONAL,
+            healthy=True,
+        ),
+        MonitorResult(
+            name="qnap",
+            category=MonitorCategory.OPTIONAL,
+            healthy=True,
+        ),
+    ]
 
     results = check_all()
 
@@ -530,4 +703,7 @@ def test_check_all_contains_only_monitoring_targets(
         "awg",
         "ssh",
         "fail2ban",
+        "home_assistant",
+        "qnap",
     ]
+    mock_external.assert_called_once_with()

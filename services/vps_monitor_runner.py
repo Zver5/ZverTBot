@@ -26,7 +26,7 @@ from services.vps_monitor_notifications import (
 from services.vps_monitor_state import StateUpdate, prepare_results, save_states
 from utils.logger import logger
 
-POLL_INTERVAL_SECONDS = 60
+POLL_INTERVAL_SECONDS = 180
 MONITOR_LOCK_PATH = "/run/zvertbot-vps-monitor.lock"
 
 
@@ -85,7 +85,11 @@ SERVICE_DISPLAY = {
     "awg": ("🛡️", "AWG"),
     "ssh": ("🔑", "SSH"),
     "fail2ban": ("🔐", "Fail2Ban"),
+    "home_assistant": ("🏠", "Home Assistant"),
+    "qnap": ("🗄️", "QNAP"),
 }
+
+EXTERNAL_MONITORS = frozenset({"home_assistant", "qnap"})
 
 
 def _format_backup_age(details: str) -> str:
@@ -124,7 +128,16 @@ def _format_update(
         else:
             status = "🟢 Работа восстановлена"
 
-        return f"{icon} <b>Сервис: {name}</b>\n{status}\n⏱️ {timestamp}"
+        lines = [
+            f"{icon} <b>Сервис: {name}</b>",
+            status,
+        ]
+
+        if update.name in EXTERNAL_MONITORS and update.details:
+            lines.append(f"🌐 {html.escape(update.details)}")
+
+        lines.append(f"⏱️ {timestamp}")
+        return "\n".join(lines)
 
     details = update.details
 
@@ -149,8 +162,12 @@ def _format_update(
             technical = "systemd: inactive"
             technical_icon = "⚙️"
         elif update.failure == "http_failed":
-            status = "🔴 Сервис запущен, но не отвечает"
-            technical = "systemd: active · HTTP: failed"
+            if update.name in EXTERNAL_MONITORS:
+                status = "🔴 Сервис недоступен"
+                technical = update.details or "HTTP: failed"
+            else:
+                status = "🔴 Сервис запущен, но не отвечает"
+                technical = "systemd: active · HTTP: failed"
             technical_icon = "🌐"
         elif update.failure == "tcp_failed":
             status = "🔴 Сервис запущен, но порт недоступен"

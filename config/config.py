@@ -62,6 +62,7 @@ from config.secrets import (
     ADMIN_CHAT,
     ADMIN_CHATS,
     BOT_TOKEN,
+    HA_MONITOR_URL,
     HA_TUNNEL_IP,
     HASS_FLAG,
     LLM_API_KEY,
@@ -69,6 +70,7 @@ from config.secrets import (
     LLM_MODEL,
     LLM_MODELS,
     LLM_PROVIDER,
+    QNAP_MONITOR_URL,
     SERVER_FLAG,
     SERVER_IP,
 )
@@ -78,7 +80,7 @@ from config.secrets import (
 # ═══════════════════════════════════════════════════════
 
 BOT_NAME = "ZverTBot"
-BOT_VERSION = "1.4.5"
+BOT_VERSION = "1.4.6"
 
 
 # ═══════════════════════════════════════════════════════

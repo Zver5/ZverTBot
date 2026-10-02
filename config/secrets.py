@@ -32,6 +32,11 @@ SERVER_FLAG = os.getenv("SERVER_FLAG", "🌐")
 HA_TUNNEL_IP = os.getenv("HA_TUNNEL_IP", "")
 HASS_FLAG = os.getenv("HASS_FLAG", "🌍")
 
+# Optional external HTTP monitoring.
+# Empty/unset URL means the monitor is disabled.
+HA_MONITOR_URL = os.getenv("HA_MONITOR_URL", "").strip()
+QNAP_MONITOR_URL = os.getenv("QNAP_MONITOR_URL", "").strip()
+
 # Xray Reality
 
 

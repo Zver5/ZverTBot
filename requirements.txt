@@ -7,7 +7,7 @@
 #   .venv/bin/pip install --upgrade pip
 #   .venv/bin/pip install -r requirements.txt
 #
-# Обновлено: 21.08.2026
+# Обновлено: 02.10.2026
 # ==========================================================
 
 # Telegram Bot API
@@ -66,5 +66,5 @@ ruff>=0.16.3
 # rclone         - резервные копии
 # ssh-keygen     - SSH ключи
 #
-# Docker / Uptime Kuma устанавливаются отдельно
+# Docker устанавливается отдельно
 #

@@ -11,6 +11,7 @@ import shutil
 import subprocess
 
 from config.paths import LOG_DIR, XRAY_ACCESS_LOG
+from services.vps_monitor import _discover_awg_units
 from utils.logger import logger
 from utils.service_control import service_exists
 
@@ -142,32 +143,48 @@ def get_service_logs(service_name):
     service = service_name.lower().strip()
 
     # AWG не пишет нормальные journal-логи.
-    # Для него показываем состояние интерфейса и peer.
+    # Для него показываем состояние всех обнаруженных интерфейсов.
     if service == "awg":
         try:
             if not shutil.which("awg"):
                 return "⚠️ AmneziaWG не установлен."
 
-            # awg-quick@awg0 — это экземпляр шаблонного
-            # systemd-юнита awg-quick@.service.
-            # list-unit-files для конкретного экземпляра может
-            # вернуть код 1, даже когда сам сервис существует.
             if not service_exists("awg-quick@.service"):
                 return "⚠️ AmneziaWG не установлен."
 
-            result = subprocess.run(
-                ["awg", "show", "awg0"], capture_output=True, text=True, timeout=10
-            )
+            units = _discover_awg_units()
 
-            data = result.stdout.strip()
+            if not units:
+                return "📭 AWG: активные экземпляры не обнаружены."
 
-            if not data:
-                return "📭 AWG awg0 не отвечает."
+            outputs = []
 
-            data = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])").sub("", data)
+            for unit in units:
+                interface = unit.split("@", 1)[1]
+
+                result = subprocess.run(
+                    ["awg", "show", interface],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+
+                data = result.stdout.strip()
+
+                if not data:
+                    outputs.append(f"{interface}: интерфейс не отвечает.")
+                    continue
+
+                data = re.compile(
+                    r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])"
+                ).sub("", data)
+
+                outputs.append(f"AWG {interface}:" + NL + data)
+
+            data = NL.join(outputs)
 
             return (
-                "🛡 **AWG статус awg0**"
+                "🛡 **AWG статус**"
                 + NL
                 + BT
                 + BT
