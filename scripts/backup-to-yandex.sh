@@ -7,7 +7,6 @@
 # - сохраняет конфигурацию ZverTBot, Xray, SSH, rclone и firewall;
 # - сохраняет реальные конфигурационные файлы AmneziaWG;
 # - сохраняет systemd-сервисы и timers ZverTBot;
-# - сохраняет базу Uptime Kuma как общий системный компонент VPS;
 # - загружает архив и passport-файлы в облачный remote;
 # - поддерживает локальную и облачную retention-политику;
 # - записывает результат в hass/backup/rclone_backup_status.json.
@@ -321,7 +320,9 @@ for FILE in \
 /etc/fstab \
 /etc/logrotate.d/rsyslog \
 /etc/apt/apt.conf.d/50unattended-upgrades \
-/etc/systemd/journald.conf
+/etc/systemd/journald.conf \
+/etc/sysctl.d/99-zvertbot-network.conf \
+/etc/sysctl.d/99-zvertbot-swap.conf
 
 do
 
@@ -342,35 +343,6 @@ log_info "backup.section.completed | section=additional"
 
 
 # ============================================================
-# 🐻 KUMA DATABASE
-# ============================================================
-
-if [ -d /opt/uptime-kuma/data ]; then
-
-log_info "backup.kuma.started"
-
-mkdir -p \
-"${TEMP_DIR}/opt/uptime-kuma/data"
-
-
-if ! tar -czf \
-"${TEMP_DIR}/opt/uptime-kuma/data/kuma-data.tar.gz" \
--C /opt/uptime-kuma/data .; then
-    log_error "backup.kuma.archive_failed"
-
-    if ! write_failed_status 1 "Failed to create Kuma archive"; then
-        log_error "backup.status.write_failed"
-    fi
-
-    exit 1
-fi
-
-
-fi
-
-
-
-# ============================================================
 # CREATE ARCHIVE
 # ============================================================
 
@@ -381,11 +353,12 @@ if ! tar \
 --exclude="__pycache__" \
 --exclude="*.pyc" \
 --exclude="*.backup" \
---exclude="usage_before_test.json" \
---exclude="usage_new_before_restore.json" \
 --exclude=".venv" \
 --exclude=".git" \
 --exclude=".pytest_cache" \
+--exclude=".ruff_cache" \
+--exclude="data/geoip/*.mmdb" \
+--exclude="deploy/output/*.tar.gz" \
 --exclude=".backup_before_cleanup" \
 --exclude="*.bak" \
 --exclude="*.log" \
