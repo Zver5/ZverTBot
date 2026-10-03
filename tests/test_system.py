@@ -188,7 +188,7 @@ def test_awg_service_not_installed(mock_exists, mock_which):
 
 @patch("services.system.shutil.which")
 @patch("services.system.service_exists")
-@patch("services.system._discover_awg_units")
+@patch("services.system.discover_awg_units")
 @patch("services.system.subprocess.run")
 def test_awg_empty_output(mock_run, mock_discover, mock_exists, mock_which):
     mock_which.return_value = "/usr/bin/awg"
@@ -203,7 +203,7 @@ def test_awg_empty_output(mock_run, mock_discover, mock_exists, mock_which):
 
 @patch("services.system.shutil.which")
 @patch("services.system.service_exists")
-@patch("services.system._discover_awg_units")
+@patch("services.system.discover_awg_units")
 @patch("services.system.subprocess.run")
 def test_awg_success_strips_ansi(
     mock_run, mock_discover, mock_exists, mock_which
@@ -226,10 +226,14 @@ def test_awg_success_strips_ansi(
 
 @patch("services.system.shutil.which")
 @patch("services.system.service_exists")
+@patch("services.system.discover_awg_units")
 @patch("services.system.subprocess.run")
-def test_awg_exception(mock_run, mock_exists, mock_which):
+def test_awg_exception(
+    mock_run, mock_discover, mock_exists, mock_which
+):
     mock_which.return_value = "/usr/bin/awg"
     mock_exists.return_value = True
+    mock_discover.return_value = ["awg-quick@awg0"]
     mock_run.side_effect = Exception("awg failed")
 
     text = get_service_logs("awg")

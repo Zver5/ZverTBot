@@ -8,6 +8,21 @@ import time
 from utils.logger import logger
 
 
+def run_systemctl(
+    *args: str,
+    timeout: int = 5,
+    check: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Единая точка запуска systemctl."""
+    return subprocess.run(
+        ["systemctl", *args],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=check,
+    )
+
+
 def service_exists(service: str) -> bool:
     """
     Проверяет наличие systemd unit.
@@ -45,11 +60,22 @@ def service_is_active(service: str) -> bool:
     return get_service_state(service) == "active"
 
 
-def list_service_units() -> list[str]:
-    """Возвращает имена всех systemd service units."""
+def list_service_units(pattern: str | None = None) -> list[str]:
+    """Возвращает имена systemd service units."""
+    args = [
+        "systemctl",
+        "list-units",
+        "--type=service",
+        "--all",
+        "--no-legend",
+    ]
+
+    if pattern:
+        args.append(pattern)
+
     try:
         result = subprocess.run(
-            ["systemctl", "list-units", "--type=service", "--all", "--no-legend"],
+            args,
             capture_output=True,
             text=True,
             timeout=5,

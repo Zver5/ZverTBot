@@ -18,7 +18,12 @@ from urllib.request import urlopen
 
 from config import HA_MONITOR_URL, QNAP_MONITOR_URL
 from config.paths import DATA_DIR, RCLONE_STATUS_JSON
+from services.awg.runtime import (
+    discover_awg_units,
+    get_listening_port,
+)
 from services.xray.config_manager import load_xray_config
+from utils.service_control import run_systemctl
 
 
 class MonitorCategory(StrEnum):
@@ -91,14 +96,8 @@ def component_category(name: str) -> MonitorCategory:
     raise ValueError(f"Unknown monitoring component: {name}")
 
 
-def _systemctl(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["systemctl", *args],
-        capture_output=True,
-        text=True,
-        timeout=5,
-        check=False,
-    )
+# Backward-compatible alias for existing tests/callers.
+_systemctl = run_systemctl
 
 
 def _tcp_check(host: str, port: int, timeout: float = 3.0) -> bool:
@@ -362,28 +361,13 @@ def check_xray() -> MonitorResult:
     )
 
 
-def _discover_awg_units() -> list[str]:
-    """Find all installed awg-quick instances without assuming awg0."""
-    result = _systemctl("list-units", "--all", "awg-quick@*.service")
-    units = []
-
-    for line in result.stdout.splitlines():
-        unit = line.split()[0] if line.split() else ""
-        if (
-            unit.startswith("awg-quick@")
-            and unit != "awg-quick@.service"
-            and unit.endswith(".service")
-        ):
-            units.append(unit.removesuffix(".service"))
-
-    return units
 
 
 def check_awg_service(
     unit_name: str | None = None,
 ) -> MonitorResult:
     """Check all AWG systemd units, interfaces and listening ports."""
-    units = [unit_name] if unit_name else _discover_awg_units()
+    units = [unit_name] if unit_name else discover_awg_units()
 
     if not units:
         return MonitorResult(
@@ -416,39 +400,16 @@ def check_awg_service(
             )
             continue
 
-        show = subprocess.run(
-            ["awg", "show", unit.split("@", 1)[1]],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
+        interface = unit.split("@", 1)[1]
+        port = get_listening_port(interface)
 
-        if show.returncode != 0:
+        if port is None:
             results.append(
                 MonitorResult(
                     name="awg",
                     category=MonitorCategory.OPTIONAL,
                     healthy=False,
                     details=f"{unit} interface unavailable",
-                    failure=MonitorFailure.UDP_FAILED,
-                )
-            )
-            continue
-
-        port = None
-        for line in show.stdout.splitlines():
-            if line.strip().startswith("listening port:"):
-                port = line.split(":", 1)[1].strip()
-                break
-
-        if not port:
-            results.append(
-                MonitorResult(
-                    name="awg",
-                    category=MonitorCategory.OPTIONAL,
-                    healthy=False,
-                    details=f"{unit} listening port unavailable",
                     failure=MonitorFailure.UDP_FAILED,
                 )
             )

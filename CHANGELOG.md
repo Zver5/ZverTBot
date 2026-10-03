@@ -2,6 +2,28 @@
 
 Все заметные изменения ZverTBot.
 
+## [Unreleased]
+
+### Changed
+
+#### Server Passport
+
+- Некритичные проблемы с `SSH PasswordAuthentication`, отсутствием `rclone.conf` и последним запуском backup теперь отображаются как предупреждения `WARN`, а не как критические ошибки.
+- Итоговое сообщение для сервера с предупреждениями теперь явно указывает на наличие предупреждений без сообщения о неготовности сервера.
+
+#### Backup
+
+- Удалено резервное копирование базы Uptime Kuma.
+- Добавлено резервное копирование ZverTBot-specific sysctl-конфигураций.
+- Удалены устаревшие исключения для временных тестовых файлов.
+- Из backup исключены GeoIP `.mmdb` базы, готовые release-архивы из `deploy/output` и `.ruff_cache`.
+
+#### AmneziaWG
+
+- AWG discovery и получение listening port вынесены в `services.awg.runtime`.
+- Проверка AWG, сканирование портов, health-check и системные логи используют единый runtime discovery.
+- В `utils.service_control` добавлены общий helper для запуска `systemctl` и фильтрация service units по шаблону.
+
 ## [1.4.6] - 2026-10-02
 
 ### Added

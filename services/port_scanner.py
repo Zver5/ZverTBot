@@ -6,7 +6,7 @@ services/port_scanner.py
 
 import subprocess
 
-from services.vps_monitor import _discover_awg_units
+from services.awg.runtime import discover_awg_units, get_listening_port
 from services.xray.config_manager import get_vless_inbounds, load_xray_config
 from utils.logger import logger
 
@@ -42,43 +42,27 @@ def _get_expected_ports() -> dict[str, dict[str, str]]:
     except Exception as e:
         logger.warning("port_scanner.xray_discovery.failed | error=%s", e)
 
-    awg_units = _discover_awg_units()
+    awg_units = discover_awg_units()
 
-    if awg_units:
-        for unit in awg_units:
-            interface = unit.split("@", 1)[1] if "@" in unit else unit
+    for unit in awg_units:
+        interface = unit.split("@", 1)[1] if "@" in unit else unit
 
-            try:
-                result = subprocess.run(
-                    ["awg", "show", interface],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                    check=False,
-                )
-            except Exception as e:
-                logger.warning(
-                    "port_scanner.awg_discovery.failed | unit=%s error=%s",
-                    unit,
-                    e,
-                )
-                continue
+        try:
+            port = get_listening_port(interface)
+        except Exception as e:
+            logger.warning(
+                "port_scanner.awg_discovery.failed | unit=%s error=%s",
+                unit,
+                e,
+            )
+            continue
 
-            if result.returncode != 0:
-                continue
-
-            for line in result.stdout.splitlines():
-                if not line.strip().startswith("listening port:"):
-                    continue
-
-                port = line.split(":", 1)[1].strip()
-                if port.isdigit():
-                    expected[port] = {
-                        "proto": "UDP",
-                        "service": "amneziawg",
-                        "desc": f"AmneziaWG ({interface})",
-                    }
-                break
+        if port is not None:
+            expected[str(port)] = {
+                "proto": "UDP",
+                "service": "amneziawg",
+                "desc": f"AmneziaWG ({interface})",
+            }
 
     return expected
 

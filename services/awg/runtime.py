@@ -7,6 +7,8 @@ import re
 import subprocess
 from dataclasses import dataclass
 
+from utils.service_control import list_service_units
+
 
 @dataclass(frozen=True)
 class AwgPeerRuntime:
@@ -145,6 +147,58 @@ def _parse_show_output(output: str) -> dict[str, AwgPeerRuntime]:
 
     flush()
     return peers
+
+
+def discover_awg_units() -> list[str]:
+    """Return installed AWG systemd units."""
+    return [
+        unit
+        for unit in list_service_units("awg-quick@*.service")
+        if unit.startswith("awg-quick@")
+    ]
+
+
+def get_interface_output(interface: str) -> str | None:
+    """Return `awg show <interface>` output."""
+    try:
+        result = subprocess.run(
+            ["awg", "show", interface],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+    except (
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ):
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    return result.stdout
+
+
+def get_listening_port(interface: str) -> int | None:
+    """Return AWG listening UDP port for an interface."""
+    output = get_interface_output(interface)
+
+    if output is None:
+        return None
+
+    for line in output.splitlines():
+        if not line.strip().startswith("listening port:"):
+            continue
+
+        value = line.split(":", 1)[1].strip()
+
+        try:
+            return int(value)
+        except ValueError:
+            return None
+
+    return None
 
 
 def get_runtime_peers() -> dict[str, AwgPeerRuntime]:

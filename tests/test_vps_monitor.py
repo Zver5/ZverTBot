@@ -420,42 +420,37 @@ def test_xray_config_failure_is_down(mock_systemctl):
 
 
 @patch("services.vps_monitor._systemctl")
-def test_awg_active_and_interface_is_healthy(mock_systemctl):
-    mock_systemctl.side_effect = [
-        completed("awg-quick@awg1.service enabled\n"),
-        completed("active\n"),
-    ]
+@patch("services.vps_monitor.discover_awg_units")
+@patch("services.vps_monitor.get_listening_port")
+def test_awg_active_and_interface_is_healthy(
+    mock_port, mock_discover, mock_systemctl
+):
+    mock_discover.return_value = ["awg-quick@awg1"]
+    mock_systemctl.return_value = completed("active\n")
+    mock_port.return_value = 58352
 
-    with patch(
-        "services.vps_monitor.subprocess.run",
-        return_value=completed("interface: awg1\n  listening port: 58352\n"),
-    ) as mock_run:
-        result = check_awg_service()
+    result = check_awg_service()
 
     assert result.healthy is True
     assert "awg-quick@awg1" in result.details
     assert "58352" in result.details
-    assert mock_run.call_args.args[0] == ["awg", "show", "awg1"]
+    mock_port.assert_called_once_with("awg1")
 
 
 def test_awg_multiple_units_are_all_checked():
     with patch(
+        "services.vps_monitor.discover_awg_units",
+        return_value=["awg-quick@awg0", "awg-quick@awg1"],
+    ), patch(
         "services.vps_monitor._systemctl",
         side_effect=[
-            completed(
-                "awg-quick@awg0.service enabled\n"
-                "awg-quick@awg1.service enabled\n"
-            ),
             completed("active\n"),
             completed("active\n"),
         ],
     ) as mock_systemctl, patch(
-        "services.vps_monitor.subprocess.run",
-        side_effect=[
-            completed("interface: awg0\n  listening port: 58352\n"),
-            completed("interface: awg1\n  listening port: 58353\n"),
-        ],
-    ) as mock_run:
+        "services.vps_monitor.get_listening_port",
+        side_effect=[58352, 58353],
+    ) as mock_port:
         result = check_awg_service()
 
     assert result.healthy is True
@@ -463,26 +458,23 @@ def test_awg_multiple_units_are_all_checked():
     assert "awg-quick@awg1" in result.details
     assert "58352" in result.details
     assert "58353" in result.details
-    assert mock_systemctl.call_count == 3
-    assert mock_run.call_count == 2
+    assert mock_systemctl.call_count == 2
+    assert mock_port.call_count == 2
 
 
 def test_awg_one_failed_unit_makes_aggregate_down():
     with patch(
+        "services.vps_monitor.discover_awg_units",
+        return_value=["awg-quick@awg0", "awg-quick@awg1"],
+    ), patch(
         "services.vps_monitor._systemctl",
         side_effect=[
-            completed(
-                "awg-quick@awg0.service enabled\n"
-                "awg-quick@awg1.service enabled\n"
-            ),
             completed("active\n"),
             completed("failed\n"),
         ],
     ), patch(
-        "services.vps_monitor.subprocess.run",
-        return_value=completed(
-            "interface: awg0\n  listening port: 58352\n"
-        ),
+        "services.vps_monitor.get_listening_port",
+        return_value=58352,
     ):
         result = check_awg_service()
 
@@ -493,17 +485,16 @@ def test_awg_one_failed_unit_makes_aggregate_down():
 
 
 @patch("services.vps_monitor._systemctl")
-def test_awg_interface_failure_is_down(mock_systemctl):
-    mock_systemctl.side_effect = [
-        completed("awg-quick@awg2.service enabled\n"),
-        completed("active\n"),
-    ]
+@patch("services.vps_monitor.discover_awg_units")
+@patch("services.vps_monitor.get_listening_port")
+def test_awg_interface_failure_is_down(
+    mock_port, mock_discover, mock_systemctl
+):
+    mock_discover.return_value = ["awg-quick@awg2"]
+    mock_systemctl.return_value = completed("active\n")
+    mock_port.return_value = None
 
-    with patch(
-        "services.vps_monitor.subprocess.run",
-        return_value=completed("", 1),
-    ):
-        result = check_awg_service()
+    result = check_awg_service()
 
     assert result.healthy is False
     assert "unavailable" in result.details

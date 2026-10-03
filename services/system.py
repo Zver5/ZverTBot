@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 from config.paths import LOG_DIR, XRAY_ACCESS_LOG
-from services.vps_monitor import _discover_awg_units
+from services.awg.runtime import discover_awg_units
 from utils.logger import logger
 from utils.service_control import service_exists
 
@@ -152,7 +152,7 @@ def get_service_logs(service_name):
             if not service_exists("awg-quick@.service"):
                 return "⚠️ AmneziaWG не установлен."
 
-            units = _discover_awg_units()
+            units = discover_awg_units()
 
             if not units:
                 return "📭 AWG: активные экземпляры не обнаружены."

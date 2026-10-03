@@ -5,7 +5,8 @@
 import shutil
 import subprocess
 
-from services.vps_monitor import _discover_awg_units, check_all
+from services.awg.runtime import discover_awg_units
+from services.vps_monitor import check_all
 from utils.service_control import get_service_state
 
 
@@ -83,7 +84,7 @@ def collect_server_health() -> str:
         status = get_service_state(service)
         parts.append(f"{service}: {status or 'unknown'}")
 
-    awg_units = _discover_awg_units()
+    awg_units = discover_awg_units()
     if awg_units:
         for service in awg_units:
             status = get_service_state(service)
