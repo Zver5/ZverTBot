@@ -636,11 +636,18 @@ def test_check_all_contains_only_monitoring_targets(
     mock_fail2ban,
     mock_external,
 ):
-    mock_service.return_value = MonitorResult(
-        name="zvertbot",
-        category=MonitorCategory.CRITICAL,
-        healthy=True,
-    )
+    mock_service.side_effect = [
+        MonitorResult(
+            name="zvertbot",
+            category=MonitorCategory.CRITICAL,
+            healthy=True,
+        ),
+        MonitorResult(
+            name="zvertbot-vps-monitor",
+            category=MonitorCategory.OPTIONAL,
+            healthy=True,
+        ),
+    ]
     mock_stats.return_value = MonitorResult(
         name="stats-http",
         category=MonitorCategory.CRITICAL,
@@ -688,6 +695,7 @@ def test_check_all_contains_only_monitoring_targets(
 
     assert [result.name for result in results] == [
         "zvertbot",
+        "zvertbot-vps-monitor",
         "stats-http",
         "backup",
         "xray",
@@ -696,5 +704,9 @@ def test_check_all_contains_only_monitoring_targets(
         "fail2ban",
         "home_assistant",
         "qnap",
+    ]
+    assert [call.args for call in mock_service.call_args_list] == [
+        ("zvertbot", MonitorCategory.CRITICAL),
+        ("zvertbot-vps-monitor", MonitorCategory.OPTIONAL),
     ]
     mock_external.assert_called_once_with()

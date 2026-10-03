@@ -67,7 +67,7 @@ def _build_external_monitor_lines() -> list[str]:
             details = f"{details} · {latency} мс"
 
         lines.append(
-            f"{status_icon} {icon} {name} — {details or 'нет данных'}"
+            f"{status_icon} {icon} {name} · {details or 'нет данных'}"
         )
 
     return lines
@@ -97,7 +97,11 @@ def _build_status_text():
             else f"{disk_val:.1f}%"
         )
 
-        traffic = f"{BT}{data.get('vpn_total_gb', 0):.2f} GB{BT}"
+        traffic_gb = data.get("vpn_total_gb", 0)
+        if traffic_gb >= 1024:
+            traffic = f"{BT}{traffic_gb / 1024:.2f} TB{BT}"
+        else:
+            traffic = f"{BT}{traffic_gb:.2f} GB{BT}"
 
         swap = data.get("swap", {})
         if isinstance(swap, dict):
@@ -130,28 +134,29 @@ def _build_status_text():
                 icon = "⚪"
                 status = "не установлен"
 
-            svc_lines.append(f"{icon} {BT}{service}{BT} — {status}")
+            svc_lines.append(f"{icon} {BT}{service}{BT} · {status}")
 
         external_lines = _build_external_monitor_lines()
 
         external_section = ""
         if external_lines:
             external_section = (
-                f"{NL}{NL}🌐 Внешние сервисы:{NL}{NL}"
-                f"{NL.join(external_lines)}"
+                f"{NL}{NL}🌐 *ВНЕШНИЕ СЕРВИСЫ*{NL}"
+                f"{NL}{NL.join(external_lines)}"
             )
 
         return (
-            f"📊 *VPS ОТЧЕТ:*{NL}"
-            f"🐺 {BOT_NAME}: v{BOT_VERSION}{NL}{NL}"
-            f"🟢 Uptime: {BT}{int(d)}д {int(h)}ч {int(m)}м{BT}{NL}"
-            f"🌡 CPU: {BT}{cpu_pct}{BT}{NL}"
-            f"💾 RAM: {BT}{ram_pct}{BT}{NL}"
-            f"🔄 Swap: {BT}{swap_used_mb}MB ({swap_pct}){BT}{NL}"
-            f"⌚ Процессы: {BT}{procs}{BT}{NL}"
-            f"💿 Disk: {BT}{disk_pct}{BT}{NL}"
-            f"📈 Трафик: {traffic}{NL}"
-            f"🔹 Службы:{NL}{NL.join(svc_lines)}"
+            f"📊 *VPS ОТЧЕТ*{NL}"
+            f"🐺 {BOT_NAME} `{BOT_VERSION}`{NL}{NL}"
+            f"🟢 *Uptime* · {BT}{int(d)}д {int(h)}ч {int(m)}м{BT}{NL}"
+            f"🌡 *CPU* · {BT}{cpu_pct}{BT}{NL}"
+            f"💾 *RAM* · {BT}{ram_pct}{BT}{NL}"
+            f"🔄 *Swap* · {BT}{swap_used_mb} MB ({swap_pct}){BT}{NL}"
+            f"⌚ *Процессы* · {BT}{procs}{BT}{NL}"
+            f"💿 *Disk* · {BT}{disk_pct}{BT}{NL}"
+            f"📈 *Трафик* · {traffic}{NL}{NL}"
+            f"🔹 *СЛУЖБЫ*{NL}"
+            f"{NL.join(svc_lines)}"
             f"{external_section}"
         )
     except Exception as e:

@@ -587,6 +587,10 @@ def check_all() -> list[MonitorResult]:
             "zvertbot",
             MonitorCategory.CRITICAL,
         ),
+        check_long_running_service(
+            "zvertbot-vps-monitor",
+            MonitorCategory.OPTIONAL,
+        ),
         check_stats_http(),
         check_backup(),
         check_xray(),

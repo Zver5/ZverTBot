@@ -42,6 +42,33 @@ def test_build_status_text_ok(monkeypatch, tmp_path):
     assert "не установлен" in text
 
 
+def test_build_status_text_formats_large_traffic_as_tb(monkeypatch, tmp_path):
+    stats = tmp_path / "stats.json"
+
+    stats.write_text(
+        json.dumps(
+            {
+                "cpu": 10.5,
+                "mem": 20.2,
+                "disk": {"percent": 30.3},
+                "vpn_total_gb": 2048,
+                "services": {"xray": 1},
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        st,
+        "load_prepared_vps_payload",
+        lambda: json.loads(stats.read_text()),
+    )
+
+    text = st._build_status_text()
+
+    assert "📈 *Трафик* · `2.00 TB`" in text
+    assert "2048.00 GB" not in text
+
+
 def test_build_status_text_includes_external_monitors(
     monkeypatch,
     tmp_path,
@@ -93,9 +120,9 @@ def test_build_status_text_includes_external_monitors(
 
     text = st._build_status_text()
 
-    assert "🌐 Внешние сервисы:" in text
-    assert "🟢 🏠 Home Assistant — HTTP 200 · 42 мс" in text
-    assert "🔴 🗄️ QNAP — connection refused" in text
+    assert "🌐 *ВНЕШНИЕ СЕРВИСЫ*" in text
+    assert "🟢 🏠 Home Assistant · HTTP 200 · 42 мс" in text
+    assert "🔴 🗄️ QNAP · connection refused" in text
 
 
 def test_build_status_text_hides_disabled_external_monitor(
@@ -151,7 +178,7 @@ def test_build_status_text_hides_disabled_external_monitor(
 
     assert "QNAP" in text
     assert "Home Assistant" not in text
-    assert "🌐 Внешние сервисы:" in text
+    assert "🌐 *ВНЕШНИЕ СЕРВИСЫ*" in text
 
 
 def test_build_status_text_has_no_external_section_when_disabled(
@@ -205,7 +232,7 @@ def test_build_status_text_has_no_external_section_when_disabled(
 
     text = st._build_status_text()
 
-    assert "🌐 Внешние сервисы:" not in text
+    assert "🌐 *ВНЕШНИЕ СЕРВИСЫ*" not in text
     assert "Home Assistant" not in text
     assert "QNAP" not in text
 

@@ -100,7 +100,13 @@ def get_services_status():
             ),
         }
 
-    for service in ["xray", "stats-http", "zvertbot", "fail2ban"]:
+    for service in [
+        "xray",
+        "stats-http",
+        "zvertbot",
+        "zvertbot-vps-monitor",
+        "fail2ban",
+    ]:
         status[service] = build_status(service)
 
     awg_units = [
