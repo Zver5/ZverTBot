@@ -317,7 +317,7 @@ def test_send_qr_or_conf_vless_escapes_username_in_markdown():
         cs.send_qr_or_conf(bot, 100, "user_test", "vless")
 
     caption = bot.send_photo.call_args.kwargs["caption"]
-    assert "*VLESS QR: user\\_test*" in caption
+    assert "*VLESS QR:* `user_test`" in caption
 
 
 def test_send_qr_or_conf_awg_no_config():
@@ -409,7 +409,7 @@ def test_send_qr_or_conf_awg_escapes_username_in_markdown(monkeypatch):
         cs.send_qr_or_conf(bot, 100, "user_test", "awg")
 
     caption = bot.send_photo.call_args.kwargs["caption"]
-    assert "*AWG QR + Конфиг: user\\_test*" in caption
+    assert "*AWG QR + Конфиг:* `user_test`" in caption
 
 
 def test_send_qr_or_conf_awg_success():

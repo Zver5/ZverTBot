@@ -409,7 +409,7 @@ def send_qr_or_conf(bot, chat_id, username, proto, config_only=False):
             )
 
             caption = (
-                f"📤 *VLESS QR: {escape_md(username)}*\n"
+                f"📤 *VLESS QR:* `{username}`\n"
                 f"🌐 Сервер: `{SERVER_IP}`\n"
                 f"🔹 Поток: `xtls-rprx-vision`\n"
                 "📱 Shadowrocket: Proxy + Настройки + Туннель + Все сети"
@@ -442,7 +442,7 @@ def send_qr_or_conf(bot, chat_id, username, proto, config_only=False):
             client_ip = load_awg_registry().get(username, {}).get("ip", "N/A")
 
             caption = (
-                f"📤 *AWG QR + Конфиг: {escape_md(username)}*\n"
+                f"📤 *AWG QR + Конфиг:* `{username}`\n"
                 f"🔹 Сервер: `{SERVER_IP}:{listen_port}`\n"
                 f"📍 Ваш IP: `{client_ip}`\n"
                 "Amnezia VPN: Импорт QR"
