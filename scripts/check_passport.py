@@ -261,12 +261,13 @@ def load_xray_passport_config():
     result = {
         "api_port": None,
         "reality": [],
+        "error": None,
     }
 
     try:
         config = load_xray_config()
     except (OSError, ValueError) as e:
-        warn(f"Xray passport config: не удалось прочитать ({e})")
+        result["error"] = str(e)
         return result
 
     for inbound in config.get("inbounds", []):
@@ -545,6 +546,7 @@ def print_port_table(title, ports):
     nft_rules = run(["nft", "list", "ruleset"])
     firewall = rules or nft_rules or ""
     docker_subnets = discover_docker_subnets()
+    policy_warnings = []
 
     for port, proto, service, policy, policy_type in ports:
         listening = port_listening(port, proto)
@@ -560,6 +562,7 @@ def print_port_table(title, ports):
             status = "ДОСТУПЕН"
             result = ok
         elif listening:
+            policy_warnings.append((port, proto, service, policy_type))
             # Несоответствие политики — рекомендация, а не
             # критическая ошибка. Сам сервис при этом доступен.
             status = "ПОЛИТИКА"
@@ -578,6 +581,30 @@ def print_port_table(title, ports):
         )
 
         result(line)
+
+    if policy_warnings:
+        world_ports = [
+            f"{port}/{proto}"
+            for port, proto, _service, policy_type in policy_warnings
+            if policy_type == "world"
+        ]
+
+        print(f"{YELLOW}💡 РЕКОМЕНДАЦИЯ{RESET}")
+
+        if world_ports:
+            print(f"{YELLOW}   Firewall: рекомендуется INPUT DROP.{RESET}")
+            print(
+                f"{YELLOW}   Явно разрешите необходимые входящие порты: "
+                f"{', '.join(world_ports)}.{RESET}"
+            )
+        else:
+            ports_text = ", ".join(
+                f"{p}/{proto}" for p, proto, _s, _t in policy_warnings
+            )
+            print(
+                f"{YELLOW}   Проверьте правила firewall для портов: "
+                f"{ports_text}.{RESET}"
+            )
 
 
 # ============================================================
@@ -662,26 +689,6 @@ if api_port:
 print_port_table(
     "🔵 ЛОКАЛЬНЫЙ ДОСТУП",
     local_services,
-)
-
-
-docker_services = []
-
-for name, port in discover_docker_ports():
-    docker_services.append(
-        (
-            port,
-            "TCP",
-            name,
-            f"127.0.0.1 · {HA_TUNNEL_IP}" if HA_TUNNEL_IP else "127.0.0.1",
-            "docker",
-        )
-    )
-
-
-print_port_table(
-    "🟣 DOCKER",
-    docker_services,
 )
 
 
@@ -822,6 +829,17 @@ xray_installed = is_xray_installed(
 if not xray_installed:
     info("Xray                      НЕ УСТАНОВЛЕН")
 else:
+    if XRAY_PASSPORT.get("error"):
+        warn(
+            "Xray passport config: не удалось прочитать "
+            f"({XRAY_PASSPORT['error']})"
+        )
+        print(f"{YELLOW}💡 РЕКОМЕНДАЦИЯ{RESET}")
+        print(
+            f"{YELLOW}   Проверьте XRAY_CONF и наличие "
+            f"конфигурации Xray.{RESET}"
+        )
+
     if XRAY_CONF.exists():
         xray_binary_path = xray_binary or "/usr/local/bin/xray"
         xray_test = run(
@@ -838,13 +856,61 @@ else:
             ok("Xray configuration         ПРОВЕРЕН")
         else:
             fail("Xray configuration         НЕКОРРЕКТНО")
+
+            error_lines = [
+                line.strip()
+                for line in xray_test.splitlines()
+                if line.strip()
+            ]
+            error_line = error_lines[-1] if error_lines else "неизвестная ошибка"
+
+            print(f"{YELLOW}   Ошибка Xray: {error_line}{RESET}")
+            print(f"{YELLOW}💡 РЕКОМЕНДАЦИЯ{RESET}")
+
+            lowered = xray_test.lower()
+
+            if "reality" in lowered and "password" in lowered:
+                recommendation = (
+                    "Проверьте REALITY password в конфигурации Xray."
+                )
+            elif "reality" in lowered:
+                recommendation = (
+                    "Проверьте параметры REALITY в конфигурации Xray."
+                )
+            elif "failed to build inbound" in lowered:
+                recommendation = (
+                    "Проверьте параметры inbound в конфигурации Xray."
+                )
+            else:
+                recommendation = (
+                    "Проверьте конфигурацию Xray и указанную выше ошибку."
+                )
+
+            print(f"{YELLOW}   {recommendation}{RESET}")
     else:
         fail(f"Xray configuration         НЕ НАЙДЕН: {XRAY_CONF}")
+        print(f"{YELLOW}💡 РЕКОМЕНДАЦИЯ{RESET}")
+        print(
+            f"{YELLOW}   Проверьте XRAY_CONF и наличие "
+            f"конфигурации Xray.{RESET}"
+        )
 
     if run(["systemctl", "is-active", "xray.service"]) == "active":
         ok("Xray service               РАБОТАЕТ")
     else:
         fail("Xray service               НЕ АКТИВЕН")
+        print(f"{YELLOW}💡 РЕКОМЕНДАЦИЯ{RESET}")
+
+        if XRAY_CONF.exists():
+            print(
+                f"{YELLOW}   Исправьте конфигурацию Xray, "
+                f"затем перезапустите xray.service.{RESET}"
+            )
+        else:
+            print(
+                f"{YELLOW}   Проверьте наличие конфигурации Xray "
+                f"и затем запустите xray.service.{RESET}"
+            )
 
 
 section("🛡 AMNEZIAWG")
@@ -865,14 +931,51 @@ else:
         ok("kernel module amneziawg    ЗАГРУЖЕН")
     elif run(["modinfo", "amneziawg"]):
         warn("kernel module amneziawg    НЕ ЗАГРУЖЕН (модуль доступен)")
+        print(f"{YELLOW}💡 РЕКОМЕНДАЦИЯ{RESET}")
+        print(
+            f"{YELLOW}   Загрузите модуль amneziawg "
+            f"и проверьте активность AWG-интерфейса.{RESET}"
+        )
     else:
         warn("kernel module amneziawg    НЕ НАЙДЕН")
+        print(f"{YELLOW}💡 РЕКОМЕНДАЦИЯ{RESET}")
+        print(
+            f"{YELLOW}   Если AmneziaWG используется, "
+            f"установите модуль amneziawg.{RESET}"
+        )
 
     for iface in awg_interfaces:
         if run(["awg", "show", iface]):
             ok(f"{iface} интерфейс АКТИВЕН")
         else:
             fail(f"{iface} интерфейс НЕ АКТИВЕН или не существует")
+
+            service = f"awg-quick@{iface}.service"
+            service_state = run(
+                ["systemctl", "is-active", service]
+            ).strip()
+
+            print(f"{YELLOW}💡 РЕКОМЕНДАЦИЯ{RESET}")
+
+            if service_state != "active":
+                print(
+                    f"{YELLOW}   {service} не активен "
+                    f"(состояние: {service_state or 'unknown'}).{RESET}"
+                )
+                print(
+                    f"{YELLOW}   Проверьте конфигурацию "
+                    f"/etc/amnezia/amneziawg/{iface}.conf "
+                    f"и журнал systemd.{RESET}"
+                )
+            else:
+                print(
+                    f"{YELLOW}   {service} активен, но интерфейс "
+                    f"{iface} не обнаружен.{RESET}"
+                )
+                print(
+                    f"{YELLOW}   Проверьте создание интерфейса "
+                    f"и конфигурацию AWG.{RESET}"
+                )
 
 
 # ============================================================
