@@ -11,6 +11,10 @@ from handlers.features.passport_check import (
     handle_passport_check,
     strip_ansi,
 )
+from services.passport_helpers import (
+    is_awg_installed,
+    is_xray_installed,
+)
 
 
 @pytest.fixture
@@ -319,3 +323,68 @@ class TestPassportCheck:
         )
 
         assert result is False
+
+class TestOptionalPassportComponents:
+    """Опциональные Xray и AmneziaWG не должны делать Passport FAIL."""
+
+    @pytest.mark.parametrize(
+        ("binary", "config_exists", "unit_exists"),
+        [
+            (False, False, False),
+            (None, False, False),
+            ("", False, False),
+        ],
+    )
+    def test_xray_not_installed(
+        self,
+        binary,
+        config_exists,
+        unit_exists,
+    ):
+        assert not is_xray_installed(
+            binary,
+            config_exists,
+            unit_exists,
+        )
+
+    @pytest.mark.parametrize(
+        ("binary", "config_exists", "unit_exists"),
+        [
+            ("/usr/local/bin/xray", False, False),
+            (False, True, False),
+            (False, False, True),
+        ],
+    )
+    def test_xray_installed(
+        self,
+        binary,
+        config_exists,
+        unit_exists,
+    ):
+        assert is_xray_installed(
+            binary,
+            config_exists,
+            unit_exists,
+        )
+
+    @pytest.mark.parametrize(
+        ("binary", "interfaces"),
+        [
+            (False, []),
+            (None, []),
+            ("", []),
+        ],
+    )
+    def test_awg_not_installed(self, binary, interfaces):
+        assert not is_awg_installed(binary, interfaces)
+
+    @pytest.mark.parametrize(
+        ("binary", "interfaces"),
+        [
+            ("/usr/bin/awg", []),
+            (False, ["awg0"]),
+            (None, ["awg0"]),
+        ],
+    )
+    def test_awg_installed(self, binary, interfaces):
+        assert is_awg_installed(binary, interfaces)

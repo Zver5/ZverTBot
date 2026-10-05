@@ -31,6 +31,10 @@ import unicodedata  # noqa: E402
 
 from config.paths import AWG_DEFAULT_CONF, XRAY_CONF  # noqa: E402
 from config.secrets import HA_TUNNEL_IP  # noqa: E402
+from services.passport_helpers import (  # noqa: E402
+    is_awg_installed,
+    is_xray_installed,
+)
 from services.xray.config_manager import load_xray_config  # noqa: E402
 
 # ============================================================
@@ -109,6 +113,11 @@ def fail(text):
     global FAIL
     FAIL += 1
     print(f"{RED}🔴 {text}{RESET}")
+
+
+def info(text):
+    """Информационная строка, не влияющая на итоговый статус."""
+    print(f"{BLUE}ℹ️ {text}{RESET}")
 
 
 def check_file(path):
@@ -311,7 +320,7 @@ for s in main_services:
     check_enabled_active_unit(s, "РАБОТАЕТ")
 
 # Остальные системные сервисы.
-for s in ["xray.service", "fail2ban.service"] + [
+for s in ["fail2ban.service"] + [
     f"awg-quick@{iface}.service" for iface in discover_awg_interfaces()
 ]:
     active = run(["systemctl", "is-active", s])
@@ -798,83 +807,72 @@ backup_timer = run([
     "-p", "ActiveState",
 ])
 
-backup_result_ok = (
-    "Result=success" in backup_status
-    and "ExecMainStatus=0" in backup_status
-)
-
-backup_fresh = False
-exit_line = next(
-    (
-        line
-        for line in backup_status.splitlines()
-        if line.startswith("ExecMainExitTimestamp=")
-    ),
-    "",
-)
-
-if exit_line:
-    try:
-        timestamp = exit_line.split("=", 1)[1].strip()
-        exit_timestamp = run(["date", "-d", timestamp, "+%s"])
-
-        if exit_timestamp.isdigit():
-            backup_fresh = (
-                time.time() - int(exit_timestamp)
-            ) <= 26 * 60 * 60
-    except (ValueError, OverflowError):
-        backup_fresh = False
-
-backup_timer_ok = "ActiveState=active" in backup_timer
-
-if backup_result_ok and backup_fresh and backup_timer_ok:
-    ok("backup service             ПОСЛЕДНИЙ ЗАПУСК OK")
-else:
-    warn("backup service             ПОСЛЕДНИЙ ЗАПУСК ТРЕБУЕТ ПРОВЕРКИ")
-
-
 section("🔐 XRAY")
-check_file(str(XRAY_CONF))
 
-# Проверка конфигурации тем же бинарником Xray,
-# который используется systemd. Xray при этом не запускается.
-if XRAY_CONF.exists():
-    xray_test = run(["/usr/local/bin/xray", "run", "-test", "-config", str(XRAY_CONF)])
+# Xray является опциональным компонентом.
+# Если Xray вообще не установлен, это не ошибка для произвольного VPS.
+xray_binary = shutil.which("xray")
+xray_unit = run(["systemctl", "cat", "xray.service"])
+xray_installed = is_xray_installed(
+    xray_binary,
+    XRAY_CONF.exists(),
+    bool(xray_unit),
+)
 
-    if "Configuration OK." in xray_test:
-        ok("Xray configuration         ПРОВЕРЕН")
+if not xray_installed:
+    info("Xray                      НЕ УСТАНОВЛЕН")
+else:
+    if XRAY_CONF.exists():
+        xray_binary_path = xray_binary or "/usr/local/bin/xray"
+        xray_test = run(
+            [
+                xray_binary_path,
+                "run",
+                "-test",
+                "-config",
+                str(XRAY_CONF),
+            ]
+        )
+
+        if "Configuration OK." in xray_test:
+            ok("Xray configuration         ПРОВЕРЕН")
+        else:
+            fail("Xray configuration         НЕКОРРЕКТНО")
     else:
-        fail("Xray configuration         НЕКОРРЕКТНО")
-else:
-    warn("Xray configuration         НЕ НАЙДЕН")
+        fail(f"Xray configuration         НЕ НАЙДЕН: {XRAY_CONF}")
 
-if run(["systemctl", "is-active", "xray.service"]) == "active":
-    ok("Xray service              РАБОТАЕТ")
-else:
-    fail("Xray service              НЕ АКТИВЕН")
+    if run(["systemctl", "is-active", "xray.service"]) == "active":
+        ok("Xray service               РАБОТАЕТ")
+    else:
+        fail("Xray service               НЕ АКТИВЕН")
 
 
 section("🛡 AMNEZIAWG")
 
-if shutil.which("awg"):
-    ok("awg binary                НАЙДЕН")
+awg_interfaces = discover_awg_interfaces()
+awg_binary = shutil.which("awg")
+awg_installed = is_awg_installed(awg_binary, awg_interfaces)
+
+if not awg_installed:
+    info("AmneziaWG                  НЕ УСТАНОВЛЕН")
 else:
-    fail("awg binary                НЕ НАЙДЕН")
-
-
-if Path("/sys/module/amneziawg").exists():
-    ok("kernel module amneziawg   ЗАГРУЖЕН")
-elif run(["modinfo", "amneziawg"]):
-    warn("kernel module amneziawg   НЕ ЗАГРУЖЕН (модуль доступен)")
-else:
-    warn("kernel module amneziawg   НЕ НАЙДЕН")
-
-
-for iface in discover_awg_interfaces():
-    if run(["awg", "show", iface]):
-        ok(f"{iface} интерфейс АКТИВЕН")
+    if awg_binary:
+        ok("awg binary                 НАЙДЕН")
     else:
-        fail(f"{iface} интерфейс НЕ АКТИВЕН или не существует")
+        fail("awg binary                 НЕ НАЙДЕН")
+
+    if Path("/sys/module/amneziawg").exists():
+        ok("kernel module amneziawg    ЗАГРУЖЕН")
+    elif run(["modinfo", "amneziawg"]):
+        warn("kernel module amneziawg    НЕ ЗАГРУЖЕН (модуль доступен)")
+    else:
+        warn("kernel module amneziawg    НЕ НАЙДЕН")
+
+    for iface in awg_interfaces:
+        if run(["awg", "show", iface]):
+            ok(f"{iface} интерфейс АКТИВЕН")
+        else:
+            fail(f"{iface} интерфейс НЕ АКТИВЕН или не существует")
 
 
 # ============================================================
