@@ -108,12 +108,24 @@ def _tcp_check(host: str, port: int, timeout: float = 3.0) -> bool:
         return False
 
 
+def _normalize_http_url(url: str) -> str:
+    """Normalize external monitor URL by adding HTTP scheme when omitted."""
+    url = url.strip()
+    if not url:
+        return url
+
+    if "://" not in url:
+        return f"http://{url}"
+
+    return url
+
+
 def _http_check(
     url: str,
     timeout: float = 3.0,
 ) -> tuple[bool, str]:
     try:
-        with urlopen(url, timeout=timeout) as response:
+        with urlopen(_normalize_http_url(url), timeout=timeout) as response:
             status = response.status
             if 200 <= status < 400:
                 return True, f"HTTP {status}"
@@ -160,7 +172,10 @@ def _external_http_check(
     started = time.monotonic()
 
     try:
-        with urlopen(monitor.url, timeout=EXTERNAL_MONITOR_TIMEOUT) as response:
+        with urlopen(
+            _normalize_http_url(monitor.url),
+            timeout=EXTERNAL_MONITOR_TIMEOUT,
+        ) as response:
             status = response.status
             latency_ms = round((time.monotonic() - started) * 1000)
 

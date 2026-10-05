@@ -14,6 +14,7 @@ from services.vps_monitor import (
     MonitorResult,
     MonitorState,
     StateTransition,
+    _normalize_http_url,
     check_all,
     check_awg_service,
     check_backup,
@@ -197,6 +198,67 @@ def test_stats_http_http_failure_is_down(mock_systemctl):
 
     assert result.healthy is False
     assert "refused" in result.details
+
+
+def test_normalize_http_url_adds_http_scheme():
+    assert _normalize_http_url("94.45.205.17:8123") == (
+        "http://94.45.205.17:8123"
+    )
+
+
+def test_normalize_http_url_preserves_existing_scheme():
+    assert _normalize_http_url("http://94.45.205.17:8123") == (
+        "http://94.45.205.17:8123"
+    )
+    assert _normalize_http_url("https://example.com:8443") == (
+        "https://example.com:8443"
+    )
+
+
+def test_normalize_http_url_strips_whitespace():
+    assert _normalize_http_url("  94.45.205.17:8123  ") == (
+        "http://94.45.205.17:8123"
+    )
+
+
+def test_normalize_http_url_empty():
+    assert _normalize_http_url("") == ""
+
+
+def test_external_monitor_without_scheme_uses_http(monkeypatch, tmp_path):
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monitor = ExternalHttpMonitor(
+        key="home_assistant",
+        name="Home Assistant",
+        icon="🏠",
+        url="94.45.205.17:8123",
+    )
+
+    monkeypatch.setattr(
+        "services.vps_monitor.EXTERNAL_MONITOR_CACHE_FILE",
+        tmp_path / "vps_external_monitor.json",
+    )
+
+    calls = []
+
+    def fake_urlopen(url, timeout):
+        calls.append((url, timeout))
+        return Response()
+
+    monkeypatch.setattr("services.vps_monitor.urlopen", fake_urlopen)
+
+    result = check_external_monitor(monitor)
+
+    assert result.healthy is True
+    assert calls == [("http://94.45.205.17:8123", 5.0)]
 
 
 def test_external_monitor_http_200_is_healthy(monkeypatch, tmp_path):
