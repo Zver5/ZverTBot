@@ -1,5 +1,6 @@
 
 from services import vpn_server_setup
+from services.xray import config_manager as xray_config_manager
 
 
 def test_setup_result_is_immutable():
@@ -77,6 +78,7 @@ def test_setup_xray_server_replaces_broken_config_with_backup(
     )
 
     monkeypatch.setattr(vpn_server_setup, "XRAY_CONF", config_path)
+    monkeypatch.setattr(xray_config_manager, "XRAY_CONF", config_path)
     monkeypatch.setattr(
         vpn_server_setup,
         "load_xray_config",
@@ -104,6 +106,7 @@ def test_setup_xray_server_keeps_existing_config_when_generation_fails(
     config_path.write_text(original, encoding="utf-8")
 
     monkeypatch.setattr(vpn_server_setup, "XRAY_CONF", config_path)
+    monkeypatch.setattr(xray_config_manager, "XRAY_CONF", config_path)
     monkeypatch.setattr(
         vpn_server_setup,
         "load_xray_config",
@@ -135,6 +138,7 @@ def test_setup_xray_server_saves_generated_config(monkeypatch, tmp_path):
     config_path = tmp_path / "config.json"
 
     monkeypatch.setattr(vpn_server_setup, "XRAY_CONF", config_path)
+    monkeypatch.setattr(xray_config_manager, "XRAY_CONF", config_path)
 
     expected = {
         "inbounds": [

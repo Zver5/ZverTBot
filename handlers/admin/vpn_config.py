@@ -14,9 +14,8 @@ def _protocol_name(protocol: str) -> str:
     }.get(protocol, protocol)
 
 
-def handle_vpn_config_callback(call, bot):
+def handle_vpn_config_callback(bot, cid, call, data):
     """Обрабатывает callbacks мастера создания VPN-конфига."""
-    data = call.data
 
     if not data.startswith("vpn_config:"):
         return False
