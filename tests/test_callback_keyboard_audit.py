@@ -52,6 +52,7 @@ NAV_CALLBACK_CONSTANTS = {
     "NAV_CLIENTS_RENAME_CALLBACK": "nav:clients_rename",
     "NAV_CLIENTS_SEARCH_VLESS_CALLBACK": "nav:clients_search_vless",
     "NAV_CLIENTS_SEARCH_AWG_CALLBACK": "nav:clients_search_awg",
+    "NAV_VPN_CONFIG_CALLBACK": "nav:vpn_config",
     "PROCESS_MENU_CALLBACK": "processes_menu",
     "PROCESS_TOP_CALLBACK": "processes_top",
     "PROCESS_TOP_CPU_CALLBACK": "processes_top_cpu",

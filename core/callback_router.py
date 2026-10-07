@@ -50,12 +50,14 @@ from core.navigation import (
     NAV_MANAGE_CALLBACK,
     NAV_NETWORK_CALLBACK,
     NAV_SYSTEM_CALLBACK,
+    NAV_VPN_CONFIG_CALLBACK,
     PROCESS_KILL_CALLBACK,
     PROCESS_MENU_CALLBACK,
     PROCESS_SEARCH_CALLBACK,
     PROCESS_TOP_CALLBACK,
     PROCESS_TOP_CPU_CALLBACK,
     PROCESS_TOP_RAM_CALLBACK,
+    VPN_CONFIG_CALLBACK_PREFIX,
 )
 from handlers.admin.bindings import (
     handle_bind_existing_callback,
@@ -86,6 +88,7 @@ from handlers.admin.tickets import (
     show_new_tickets,
     show_working_tickets,
 )
+from handlers.admin.vpn_config import handle_vpn_config_callback
 from handlers.client.menu import handle_request_bind
 from handlers.client.navigation import handle_client_navigation_callback
 from handlers.client.tickets import (
@@ -178,6 +181,11 @@ CALLBACK_ROUTES = (
         CallbackAccess.ADMIN,
     ),
     CallbackRoute(
+        NAV_VPN_CONFIG_CALLBACK,
+        handle_navigation_callback,
+        CallbackAccess.ADMIN,
+    ),
+    CallbackRoute(
         NAV_SYSTEM_CALLBACK,
         handle_navigation_callback,
         CallbackAccess.ADMIN,
@@ -206,6 +214,12 @@ CALLBACK_ROUTES = (
         NAV_AI_LOGS_CALLBACK,
         handle_navigation_callback,
         CallbackAccess.ADMIN,
+    ),
+    CallbackRoute(
+        VPN_CONFIG_CALLBACK_PREFIX,
+        handle_vpn_config_callback,
+        CallbackAccess.ADMIN,
+        prefix=True,
     ),
     # ------------------------------------------------------
     # Fail2Ban

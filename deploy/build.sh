@@ -53,7 +53,7 @@ if not match:
 
 version = match.group(1)
 
-if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+if not re.fullmatch(r"\d+\.\d+\.\d+(?:-beta\.\d+)?", version):
     raise SystemExit(f"Invalid BOT_VERSION: {version}")
 
 print(version)

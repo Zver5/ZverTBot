@@ -27,7 +27,8 @@
         "network": "tcp",
         "security": "reality",
         "realitySettings": {
-          "serverName": "example.com",
+          "dest": "speed.cloudflare.com:443",
+          "serverNames": ["speed.cloudflare.com"],
           "privateKey": "REPLACE_WITH_XRAY_REALITY_PRIVATE_KEY",
           "shortIds": ["REPLACE_WITH_REALITY_SHORT_ID"]
         }
@@ -51,7 +52,8 @@
         "network": "tcp",
         "security": "reality",
         "realitySettings": {
-          "serverName": "example.com",
+          "dest": "speed.cloudflare.com:443",
+          "serverNames": ["speed.cloudflare.com"],
           "privateKey": "REPLACE_WITH_XRAY_REALITY_PRIVATE_KEY",
           "shortIds": ["REPLACE_WITH_REALITY_SHORT_ID"]
         }

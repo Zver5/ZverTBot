@@ -2,6 +2,16 @@
 
 Все заметные изменения ZverTBot.
 
+## [1.4.9-beta.1] - 2026-10-07
+
+### Added
+- Dynamic server VPN config creation from the admin menu.
+- Automatic detection of missing or non-working Xray and AmneziaWG server configurations.
+- Unified `⚙️ СОЗДАТЬ КОНФИГ` flow with automatic protocol selection.
+- Safe backup before replacing a broken existing VPN configuration.
+- Real Xray configuration validation via `xray run -test`.
+- Server VPN configuration status checks and focused test coverage.
+
 ## [1.4.8] - 2026-10-05
 
 ### Fixed

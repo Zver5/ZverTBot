@@ -28,7 +28,7 @@ def test_all_declared_navigation_screens_are_registered_with_renderers():
 
 
 def test_navigation_registry_contains_expected_screen_count():
-    assert len(navigation.registry.ids()) == 39
+    assert len(navigation.registry.ids()) == 40
 
 
 def test_navigation_registration_is_complete_and_deterministic():

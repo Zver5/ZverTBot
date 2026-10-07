@@ -874,14 +874,44 @@ def test_collect_handles_awg_handshake_command_error(monkeypatch):
     sys.modules.pop(MODULE_NAME, None)
 
     module = load_vps_stats()
+    monkeypatch.setattr(
+        module,
+        "get_awg_peers",
+        lambda: [
+            type(
+                "Peer",
+                (),
+                {
+                    "name": "Alice",
+                    "public_key": "key-alice",
+                    "allowed_ip": "10.0.0.2",
+                },
+            )()
+        ],
+    )
     module.collect_stats()
 
     assert module.awg_clients
     assert all(peer["online"] is False for peer in module.awg_clients)
 
 
-def test_collect_handles_missing_live_awg_peer():
+def test_collect_handles_missing_live_awg_peer(monkeypatch):
     module = load_vps_stats()
+    monkeypatch.setattr(
+        module,
+        "get_awg_peers",
+        lambda: [
+            type(
+                "Peer",
+                (),
+                {
+                    "name": "Alice",
+                    "public_key": "key-alice",
+                    "allowed_ip": "10.0.0.2",
+                },
+            )()
+        ],
+    )
     module.collect_stats()
 
     assert module.awg_clients
