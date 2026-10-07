@@ -162,17 +162,22 @@ def test_setup_xray_server_saves_generated_config(monkeypatch, tmp_path):
         lambda **kwargs: expected,
     )
 
-    saved = {}
-
-    def fake_save(config):
-        saved["config"] = config
-
-    monkeypatch.setattr(vpn_server_setup, "save_xray_config", fake_save)
+    monkeypatch.setattr(
+        xray_config_manager,
+        "validate_xray_config",
+        lambda config: True,
+    )
+    monkeypatch.setattr(
+        xray_config_manager,
+        "validate_xray_config_structure",
+        lambda config: True,
+    )
 
     result = vpn_server_setup.setup_xray_server()
 
     assert result.created is True
-    assert saved["config"] == expected
+    assert config_path.exists()
+    assert config_path.stat().st_mode & 0o777 == 0o644
 
 
 def test_build_awg_config(monkeypatch):

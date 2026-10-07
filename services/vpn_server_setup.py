@@ -210,6 +210,13 @@ def setup_xray_server(
         config = _build_xray_config(port=port, sni=sni, dest=dest)
         save_xray_config(config)
 
+        # Installer создаёт новый Xray config с 0644. Для нового файла
+        # сохраняем ту же модель доступа, чтобы Xray мог читать config
+        # независимо от пользователя systemd-службы. Для существующего
+        # файла atomic_write() сохраняет его исходные owner/group/mode.
+        if backup is None:
+            XRAY_CONF.chmod(0o644)
+
         message = f"Xray config создан: {XRAY_CONF}"
         if backup:
             message += f"\nBackup старого конфига: {backup}"
