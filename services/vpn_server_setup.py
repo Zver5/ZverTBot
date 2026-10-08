@@ -11,6 +11,7 @@ from pathlib import Path
 
 from config.paths import AWG_CONF, XRAY_CONF
 from services.awg.config_manager import get_awg_readiness
+from services.awg.network import build_awg_network_hooks
 from services.xray.config_manager import (
     get_xray_readiness,
     load_xray_config,
@@ -156,27 +157,71 @@ def _generate_awg_private_key() -> str:
     return value
 
 
-def _build_awg_config(*, port: int = AWG_DEFAULT_PORT) -> str:
-    """Создаёт минимальный серверный AWG-конфиг."""
+def _extract_awg_peer_blocks(content: str) -> list[str]:
+    """Сохраняет исходные [Peer]-блоки без потери дополнительных полей."""
+    lines = content.splitlines(keepends=True)
+    blocks: list[str] = []
+    start: int | None = None
+
+    for index, line in enumerate(lines):
+        if line.strip().lower() == "[peer]":
+            if start is not None:
+                blocks.append("".join(lines[start:index]).strip() + "\n")
+
+            start = index
+
+            # Сохраняем комментарий # Name: непосредственно перед [Peer].
+            if index > 0 and lines[index - 1].strip().startswith("#"):
+                start = index - 1
+
+    if start is not None:
+        blocks.append("".join(lines[start:]).strip() + "\n")
+
+    return blocks
+
+
+def _build_awg_config(
+    *,
+    port: int = AWG_DEFAULT_PORT,
+    peer_blocks: list[str] | tuple[str, ...] = (),
+    network_hooks=None,
+) -> str:
+    """Создаёт серверный AWG-конфиг, сохраняя переданные peers."""
     private_key = _generate_awg_private_key()
 
-    return (
-        "[Interface]\n"
-        f"PrivateKey = {private_key}\n"
-        f"Address = {AWG_DEFAULT_ADDRESS}\n"
-        f"ListenPort = {port}\n"
-        "Jc = 4\n"
-        "Jmin = 40\n"
-        "Jmax = 70\n"
-        "S1 = 117\n"
-        "S2 = 74\n"
-        "S3 = 63\n"
-        "S4 = 82\n"
-        "H1 = 1\n"
-        "H2 = 2\n"
-        "H3 = 3\n"
-        "H4 = 4\n"
-    )
+    lines = [
+        "[Interface]",
+        f"PrivateKey = {private_key}",
+        f"Address = {AWG_DEFAULT_ADDRESS}",
+        f"ListenPort = {port}",
+        "Jc = 4",
+        "Jmin = 40",
+        "Jmax = 70",
+        "S1 = 117",
+        "S2 = 74",
+        "S3 = 63",
+        "S4 = 82",
+        "H1 = 1",
+        "H2 = 2",
+        "H3 = 3",
+        "H4 = 4",
+    ]
+
+    if network_hooks is not None:
+        lines.extend(
+            f"PostUp = {command}"
+            for command in network_hooks.post_up
+        )
+        lines.extend(
+            f"PostDown = {command}"
+            for command in network_hooks.post_down
+        )
+
+    if peer_blocks:
+        lines.append("")
+        lines.extend(block.rstrip("\n") for block in peer_blocks)
+
+    return "\n".join(lines) + "\n"
 
 
 def setup_xray_server(
@@ -249,10 +294,20 @@ def setup_awg_server(
                 )
 
             backup = _backup_path(AWG_CONF)
+            peer_blocks = _extract_awg_peer_blocks(current)
         else:
             backup = None
+            peer_blocks = []
 
-        config = _build_awg_config(port=port)
+        network_hooks = build_awg_network_hooks(
+            address=AWG_DEFAULT_ADDRESS,
+        )
+
+        config = _build_awg_config(
+            port=port,
+            peer_blocks=peer_blocks,
+            network_hooks=network_hooks,
+        )
         _save_awg_candidate(config)
 
         message = f"AWG config создан: {AWG_CONF}"

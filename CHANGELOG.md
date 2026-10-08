@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.4.9-beta.2] - 2026-10-08
+
+### Added
+- IPv4 NAT and forwarding hooks for newly generated AmneziaWG server configurations.
+- Automatic detection of the server WAN interface for AWG networking.
+- Preservation of existing AWG peer blocks when replacing a broken server configuration.
+
+### Fixed
+- AWG server configuration replacement no longer drops existing peers.
+- AWG network rules are generated as part of the server configuration lifecycle.
+
 Все заметные изменения ZverTBot.
 
 ## [1.4.9-beta.1] - 2026-10-07

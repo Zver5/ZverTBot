@@ -1,5 +1,7 @@
 
 from services import vpn_server_setup
+from services.awg import config_manager as awg_config_manager
+from services.awg import network as awg_network
 from services.xray import config_manager as xray_config_manager
 
 
@@ -281,3 +283,149 @@ def test_setup_awg_server_backs_up_broken_config(monkeypatch, tmp_path):
     assert "Backup" in result.message
     assert list(tmp_path.glob("awg0.conf.bak-*"))
     assert "generated-private-key" in saved["content"]
+
+
+def test_build_awg_network_hooks_uses_default_route(monkeypatch):
+    monkeypatch.setattr(
+        awg_network,
+        "get_default_route_interface",
+        lambda: "ens3",
+    )
+
+    hooks = awg_network.build_awg_network_hooks(
+        address="10.66.66.1/24",
+    )
+
+    assert hooks.wan_interface == "ens3"
+    assert any(
+        "10.66.66.0/24" in command
+        for command in hooks.post_up
+    )
+    assert any(
+        "-s 10.66.66.0/24 -o ens3 "
+        "-m comment --comment ZverTBot-AWG -j MASQUERADE" in command
+        for command in hooks.post_up
+    )
+    assert all(
+        "ZverTBot-AWG" in command
+        for command in hooks.post_up
+    )
+    assert all(
+        "ZverTBot-AWG" in command
+        for command in hooks.post_down
+    )
+
+
+def test_extract_awg_peer_blocks_preserves_full_blocks():
+    content = (
+        "[Interface]\n"
+        "PrivateKey = broken\n"
+        "\n# Name: Alice\n"
+        "[Peer]\n"
+        "PublicKey = alice-key\n"
+        "AllowedIPs = 10.66.66.8/32\n"
+        "PresharedKey = alice-psk\n"
+        "PersistentKeepalive = 25\n"
+        "\n# Name: Bob\n"
+        "[Peer]\n"
+        "PublicKey = bob-key\n"
+        "AllowedIPs = 10.66.66.9/32\n"
+    )
+
+    blocks = vpn_server_setup._extract_awg_peer_blocks(content)
+
+    assert len(blocks) == 2
+    assert "# Name: Alice" in blocks[0]
+    assert "PresharedKey = alice-psk" in blocks[0]
+    assert "PersistentKeepalive = 25" in blocks[0]
+    assert "# Name: Bob" in blocks[1]
+    assert "AllowedIPs = 10.66.66.9/32" in blocks[1]
+
+
+def test_build_awg_config_keeps_peer_blocks(monkeypatch):
+    monkeypatch.setattr(
+        vpn_server_setup,
+        "_generate_awg_private_key",
+        lambda: "test-awg-private-key",
+    )
+
+    hooks = awg_network.AwgNetworkHooks(
+        wan_interface="ens3",
+        post_up=("iptables -A TEST",),
+        post_down=("iptables -D TEST",),
+    )
+
+    peer = (
+        "# Name: Alice\n"
+        "[Peer]\n"
+        "PublicKey = alice-key\n"
+        "AllowedIPs = 10.66.66.8/32\n"
+    )
+
+    config = vpn_server_setup._build_awg_config(
+        peer_blocks=[peer],
+        network_hooks=hooks,
+    )
+
+    assert "PostUp = iptables -A TEST" in config
+    assert "PostDown = iptables -D TEST" in config
+    assert peer.strip() in config
+
+
+def test_setup_awg_server_preserves_peers_when_replacing_broken_config(
+    monkeypatch,
+    tmp_path,
+):
+    config_path = tmp_path / "awg0.conf"
+
+    original = (
+        "[Interface]\n"
+        "PrivateKey = REPLACE_WITH_KEY\n"
+        "Address = 10.66.66.1/24\n"
+        "ListenPort = 58352\n"
+        "\n# Name: Alice\n"
+        "[Peer]\n"
+        "PublicKey = alice-key\n"
+        "AllowedIPs = 10.66.66.8/32\n"
+        "PresharedKey = alice-psk\n"
+    )
+
+    config_path.write_text(original, encoding="utf-8")
+
+    monkeypatch.setattr(
+        vpn_server_setup,
+        "AWG_CONF",
+        config_path,
+    )
+    monkeypatch.setattr(
+        awg_config_manager,
+        "AWG_CONF",
+        config_path,
+    )
+    monkeypatch.setattr(
+        vpn_server_setup,
+        "_generate_awg_private_key",
+        lambda: "generated-private-key",
+    )
+    monkeypatch.setattr(
+        vpn_server_setup,
+        "build_awg_network_hooks",
+        lambda **kwargs: awg_network.AwgNetworkHooks(
+            wan_interface="ens3",
+            post_up=("iptables -A TEST",),
+            post_down=("iptables -D TEST",),
+        ),
+    )
+
+    result = vpn_server_setup.setup_awg_server()
+
+    assert result.created is True
+
+    generated = config_path.read_text(encoding="utf-8")
+
+    assert "generated-private-key" in generated
+    assert "# Name: Alice" in generated
+    assert "PublicKey = alice-key" in generated
+    assert "PresharedKey = alice-psk" in generated
+    assert "PostUp = iptables -A TEST" in generated
+    assert len(list(tmp_path.glob("awg0.conf.bak-*"))) == 1
