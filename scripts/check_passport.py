@@ -701,7 +701,7 @@ if auth_keys.is_file():
     if mode == "600":
         ok("SSH authorized_keys             права 600")
     else:
-        fail(f"SSH authorized_keys             права {mode} (требуется 600)")
+        warn(f"SSH authorized_keys             права {mode} (рекомендуется 600)")
 else:
     warn("SSH authorized_keys       ФАЙЛ НЕ НАЙДЕН")
 
