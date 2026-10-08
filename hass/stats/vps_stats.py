@@ -117,8 +117,12 @@ def get_services_status():
     for unit in awg_units:
         status[unit] = build_status(unit, known_exists=True)
 
+    # AWG can be installed with a config but without a loaded systemd instance.
     if not awg_units:
-        status["awg-quick@awg0"] = {"status": -1, "uptime": None}
+        awg_conf = Path("/etc/amnezia/amneziawg/awg0.conf")
+
+        if awg_conf.is_file():
+            status["awg"] = {"status": 0, "uptime": None}
 
     return status
 

@@ -84,14 +84,17 @@ def test_get_services_status_marks_missing_service():
 
         raise AssertionError(f"Неожиданная команда: {cmd}")
 
-    with patch.object(module.subprocess, "run", side_effect=fake_run):
+    with (
+        patch.object(module.subprocess, "run", side_effect=fake_run),
+        patch.object(module.Path, "is_file", return_value=False),
+    ):
         result = module.get_services_status()
 
     assert result["xray"]["status"] == -1
     assert result["stats-http"]["status"] == 1
     assert result["zvertbot"]["status"] == 1
     assert result["fail2ban"]["status"] == 1
-    assert result["awg-quick@awg0"]["status"] == -1
+    assert "awg" not in result
 
 
 def test_get_services_status_handles_systemctl_error():
@@ -100,14 +103,51 @@ def test_get_services_status_handles_systemctl_error():
     def fake_run(cmd, *args, **kwargs):
         raise OSError("systemctl недоступен")
 
-    with patch.object(module.subprocess, "run", side_effect=fake_run):
+    with (
+        patch.object(module.subprocess, "run", side_effect=fake_run),
+        patch.object(module.Path, "is_file", return_value=False),
+    ):
         result = module.get_services_status()
 
     assert result["xray"]["status"] == -1
     assert result["stats-http"]["status"] == -1
     assert result["zvertbot"]["status"] == -1
     assert result["fail2ban"]["status"] == -1
-    assert result["awg-quick@awg0"]["status"] == -1
+    assert "awg" not in result
+
+
+def test_get_services_status_reports_installed_awg_without_instance():
+    module = load_vps_stats()
+
+    def fake_run(cmd, *args, **kwargs):
+        if cmd[:2] == ["systemctl", "cat"]:
+            service = cmd[2]
+
+            if service == "xray":
+                return Mock(returncode=0, stdout="xray.service\\n")
+
+            return Mock(returncode=0, stdout=f"{service}\\n")
+
+        if cmd[:2] == ["systemctl", "is-active"]:
+            return Mock(stdout="active\\n")
+
+        if cmd[:2] == ["systemctl", "list-units"]:
+            return Mock(stdout="")
+
+        raise AssertionError(f"Неожиданная команда: {cmd}")
+
+    with (
+        patch.object(module.subprocess, "run", side_effect=fake_run),
+        patch.object(
+            module.Path,
+            "is_file",
+            return_value=True,
+        ),
+    ):
+        result = module.get_services_status()
+
+    assert result["awg"]["status"] == 0
+    assert result["awg"]["uptime"] is None
 
 
 def test_get_services_status_marks_inactive_service():
