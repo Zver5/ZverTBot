@@ -223,6 +223,7 @@ def test_setup_awg_server_does_not_overwrite_working_config(
     config_path.write_text(config, encoding="utf-8")
 
     monkeypatch.setattr(vpn_server_setup, "AWG_CONF", config_path)
+    monkeypatch.setattr(awg_config_manager, "AWG_CONF", config_path)
 
     result = vpn_server_setup.setup_awg_server()
 
@@ -239,6 +240,7 @@ def test_setup_awg_server_keeps_existing_config_when_generation_fails(
     config_path.write_text(original, encoding="utf-8")
 
     monkeypatch.setattr(vpn_server_setup, "AWG_CONF", config_path)
+    monkeypatch.setattr(awg_config_manager, "AWG_CONF", config_path)
 
     def fail_key_generation():
         raise RuntimeError("generation failed")
@@ -264,6 +266,7 @@ def test_setup_awg_server_backs_up_broken_config(monkeypatch, tmp_path):
     )
 
     monkeypatch.setattr(vpn_server_setup, "AWG_CONF", config_path)
+    monkeypatch.setattr(awg_config_manager, "AWG_CONF", config_path)
     monkeypatch.setattr(
         vpn_server_setup,
         "_generate_awg_private_key",
@@ -340,6 +343,29 @@ def test_extract_awg_peer_blocks_preserves_full_blocks():
     assert "PersistentKeepalive = 25" in blocks[0]
     assert "# Name: Bob" in blocks[1]
     assert "AllowedIPs = 10.66.66.9/32" in blocks[1]
+
+
+def test_extract_awg_peer_blocks_ignores_example_placeholder():
+    content = (
+        "[Interface]\n"
+        "PrivateKey = broken\n"
+        "\n# Name: example\n"
+        "[Peer]\n"
+        "PublicKey = REPLACE_WITH_CLIENT_PUBLIC_KEY\n"
+        "AllowedIPs = 10.66.66.12/32\n"
+        "\n# Name: Alice\n"
+        "[Peer]\n"
+        "PublicKey = alice-key\n"
+        "AllowedIPs = 10.66.66.8/32\n"
+    )
+
+    blocks = vpn_server_setup._extract_awg_peer_blocks(content)
+
+    assert len(blocks) == 1
+    assert "# Name: Alice" in blocks[0]
+    assert "alice-key" in blocks[0]
+    assert "REPLACE_WITH_CLIENT_PUBLIC_KEY" not in blocks[0]
+    assert "10.66.66.12/32" not in blocks[0]
 
 
 def test_build_awg_config_keeps_peer_blocks(monkeypatch):

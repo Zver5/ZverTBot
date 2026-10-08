@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from config.paths import AWG_CONF, XRAY_CONF
 from services.awg.config_manager import get_awg_readiness
+from services.awg.runtime import is_awg_installed
 from services.xray.config_manager import get_xray_readiness, load_xray_config
 
 
@@ -70,33 +71,8 @@ def get_xray_status() -> VpnConfigStatus:
         return VpnConfigStatus("xray", True, False, (str(exc),))
 
 
-def _awg_installed() -> bool:
-    """Проверяет установку AmneziaWG без требования запущенного интерфейса."""
-    if shutil.which("awg") is None:
-        return False
-
-    try:
-        result = subprocess.run(
-            [
-                "systemctl",
-                "list-unit-files",
-                "awg-quick@.service",
-                "--no-legend",
-                "--no-pager",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-
-    return "awg-quick@.service" in result.stdout
-
-
 def get_awg_status() -> VpnConfigStatus:
-    if not _awg_installed():
+    if not is_awg_installed():
         return VpnConfigStatus(
             "awg",
             False,

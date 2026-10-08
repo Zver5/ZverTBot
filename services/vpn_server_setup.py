@@ -158,24 +158,32 @@ def _generate_awg_private_key() -> str:
 
 
 def _extract_awg_peer_blocks(content: str) -> list[str]:
-    """Сохраняет исходные [Peer]-блоки без потери дополнительных полей."""
+    """Сохраняет реальные [Peer]-блоки без placeholder-пиров."""
     lines = content.splitlines(keepends=True)
     blocks: list[str] = []
     start: int | None = None
 
     for index, line in enumerate(lines):
-        if line.strip().lower() == "[peer]":
-            if start is not None:
-                blocks.append("".join(lines[start:index]).strip() + "\n")
+        if line.strip().lower() != "[peer]":
+            continue
 
-            start = index
+        block_start = index
 
-            # Сохраняем комментарий # Name: непосредственно перед [Peer].
-            if index > 0 and lines[index - 1].strip().startswith("#"):
-                start = index - 1
+        # Сохраняем только комментарий непосредственно перед этим [Peer].
+        if index > 0 and lines[index - 1].strip().startswith("#"):
+            block_start = index - 1
+
+        if start is not None:
+            block = "".join(lines[start:block_start]).strip()
+            if block and "REPLACE_WITH_CLIENT_PUBLIC_KEY" not in block:
+                blocks.append(block + "\n")
+
+        start = block_start
 
     if start is not None:
-        blocks.append("".join(lines[start:]).strip() + "\n")
+        block = "".join(lines[start:]).strip()
+        if block and "REPLACE_WITH_CLIENT_PUBLIC_KEY" not in block:
+            blocks.append(block + "\n")
 
     return blocks
 

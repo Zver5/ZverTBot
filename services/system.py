@@ -11,9 +11,8 @@ import shutil
 import subprocess
 
 from config.paths import LOG_DIR, XRAY_ACCESS_LOG
-from services.awg.runtime import discover_awg_units
+from services.awg.runtime import discover_awg_units, is_awg_installed
 from utils.logger import logger
-from utils.service_control import service_exists
 
 
 def run_disk_cleanup():
@@ -146,10 +145,7 @@ def get_service_logs(service_name):
     # Для него показываем состояние всех обнаруженных интерфейсов.
     if service == "awg":
         try:
-            if not shutil.which("awg"):
-                return "⚠️ AmneziaWG не установлен."
-
-            if not service_exists("awg-quick@.service"):
+            if not is_awg_installed():
                 return "⚠️ AmneziaWG не установлен."
 
             units = discover_awg_units()
