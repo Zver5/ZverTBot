@@ -149,6 +149,7 @@ def test_missing_optional_service_is_healthy(mock_systemctl):
     )
 
     assert result.healthy is True
+    assert result.failure is None
     assert result.details == "service not installed"
 
 
@@ -462,6 +463,47 @@ def test_xray_port_failure_is_down(mock_systemctl):
 
     assert result.healthy is False
     assert "TCP 443 unreachable" in result.details
+
+
+@patch("services.vps_monitor._systemctl")
+def test_missing_xray_service_is_down(mock_systemctl):
+    mock_systemctl.return_value = completed("")
+
+    result = check_xray()
+
+    assert result.healthy is False
+    assert result.failure == MonitorFailure.NOT_INSTALLED
+    assert result.details == "service not installed"
+
+
+def test_awg_without_installation_is_down():
+    with patch(
+        "services.vps_monitor.is_awg_installed",
+        return_value=False,
+    ):
+        result = check_awg_service()
+
+    assert result.healthy is False
+    assert result.failure == MonitorFailure.NOT_INSTALLED
+    assert result.details == "AWG service not installed"
+
+
+def test_awg_installed_without_units_is_down():
+    with (
+        patch(
+            "services.vps_monitor.is_awg_installed",
+            return_value=True,
+        ),
+        patch(
+            "services.vps_monitor.discover_awg_units",
+            return_value=[],
+        ),
+    ):
+        result = check_awg_service()
+
+    assert result.healthy is False
+    assert result.failure == MonitorFailure.SYSTEMD_INACTIVE
+    assert result.details == "AWG installed but no service instances found"
 
 
 @patch("services.vps_monitor._systemctl")
