@@ -51,6 +51,36 @@ def test_build_xray_config_generates_reality_config(monkeypatch):
     int(reality["shortIds"][0], 16)
     assert "serverName" not in reality
 
+    api_inbound = next(
+        inbound
+        for inbound in config["inbounds"]
+        if inbound.get("tag") == "api"
+    )
+    assert api_inbound == {
+        "listen": "127.0.0.1",
+        "port": 10085,
+        "protocol": "dokodemo-door",
+        "settings": {
+            "address": "127.0.0.1",
+        },
+        "tag": "api",
+    }
+
+    api_outbound = next(
+        outbound
+        for outbound in config["outbounds"]
+        if outbound.get("tag") == "api"
+    )
+    assert api_outbound["protocol"] == "freedom"
+
+    assert config["routing"]["rules"] == [
+        {
+            "type": "field",
+            "inboundTag": ["api"],
+            "outboundTag": "api",
+        }
+    ]
+
 
 def test_generate_reality_private_key_parses_current_xray_output(monkeypatch):
     monkeypatch.setattr(

@@ -121,12 +121,31 @@ def _build_xray_config(
                         "shortIds": [_generate_short_id()],
                     },
                 },
-            }
+            },
+            {
+                "listen": "127.0.0.1",
+                "port": 10085,
+                "protocol": "dokodemo-door",
+                "settings": {
+                    "address": "127.0.0.1"
+                },
+                "tag": "api",
+            },
         ],
         "outbounds": [
             {"protocol": "freedom", "tag": "direct"},
             {"protocol": "blackhole", "tag": "block"},
+            {"protocol": "freedom", "tag": "api"},
         ],
+        "routing": {
+            "rules": [
+                {
+                    "type": "field",
+                    "inboundTag": ["api"],
+                    "outboundTag": "api",
+                }
+            ]
+        },
     }
 
 
