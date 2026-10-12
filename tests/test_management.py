@@ -1194,7 +1194,9 @@ def test_run_manual_backup_warning_unknown_error(monkeypatch):
 
     management.run_manual_backup(management.bot, 123, 456)
 
-    assert "Бэкап создан с предупреждениями" in calls[-1][1]
+    assert "Бэкап создан локально" in calls[-1][1]
+    assert "Причина ошибки не сохранена" in calls[-1][1]
+    assert "Архив сохранён на сервере" in calls[-1][1]
     assert "Код возврата: 1" in calls[-1][1]
 
 

@@ -141,8 +141,9 @@ def test_backup_reports_upload_failures():
     backup = (ROOT / "scripts" / "backup-to-yandex.sh").read_text()
 
     assert "if ! rclone copy \\" in backup
-    assert '"status": "failed"' in backup
-    assert 'write_failed_status 1 "Failed to upload backup to remote"' in backup
+    assert '--arg status "failed"' in backup
+    assert 'write_failed_status "${upload_rc}"' in backup
+    assert "Причина: ${error_detail}" in backup
     assert 'write_failed_status 1 "Uploaded archive was not found on remote"' in backup
     assert 'write_failed_status 1 "Failed to upload passports to remote"' in backup
 
@@ -155,8 +156,8 @@ def test_backup_has_unexpected_error_status_handler():
     assert "handle_unexpected_error()" in backup
     assert "trap 'handle_unexpected_error' ERR" in backup
     assert "set -E" in backup
-    assert '"status": "failed"' in backup
-    assert '"error": "${error}"' in backup
+    assert '--arg status "failed"' in backup
+    assert '--arg error "${error}"' in backup
 
 
 def test_backup_does_not_silently_ignore_amneziawg_copy_failure():

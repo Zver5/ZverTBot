@@ -719,17 +719,57 @@ def run_manual_backup(bot, cid, message_id):
                             "Отсутствует токен облачного хранилища",
                         )
                     else:
+                        import re
+
+                        error = str(
+                            status.get("error") or "Причина ошибки не сохранена"
+                        ).replace("`", "'").replace("\\n", " ")
+
+                        # rclone повторяет одну причину для каждой попытки.
+                        # Показываем первую фактическую ошибку без повторов.
+                        attempts = re.findall(
+                            r"Attempt \d+/\d+ failed with \d+ errors and:\s*"
+                            r"(.*?)(?=(?:;?\s*Attempt \d+/\d+ failed)|$)",
+                            error,
+                        )
+                        if attempts:
+                            error = attempts[0].strip()
+
+                        if "[410 - GoneError]" in error:
+                            error = error.replace(
+                                "[410 - GoneError] Gone (Ресурс больше недоступен.)",
+                                "410 GoneError — Ресурс больше недоступен",
+                            )
+
+                        error = error[:700]
+
+                        is_yandex_unavailable = (
+                            "410" in error
+                            and (
+                                "GoneError" in error
+                                or "Ресурс больше недоступен" in error
+                            )
+                        )
+
+                        if is_yandex_unavailable:
+                            reason_title = "☁️ Яндекс Диск временно недоступен."
+                        else:
+                            reason_title = "☁️ Не удалось загрузить бэкап в облако."
+
                         text = (
-                            f"⚠️ *Бэкап создан с предупреждениями*\n\n"
+                            f"⚠️ *Бэкап создан локально*\n\n"
                             f"📦 Файл: `{backup_name}`\n"
                             f"📏 Размер: `{size_mb} MB`\n\n"
+                            f"{reason_title}\n"
+                            f"Причина: `{error}`\n\n"
+                            f"Архив сохранён на сервере.\n"
                             f"⚠️ Код возврата: {result.returncode}"
                         )
                         log_action(
                             "СОЗДАНИЕ БЭКАПА",
                             backup_name,
                             "ERROR",
-                            f"Код: {result.returncode}",
+                            error[:500],
                         )
             except Exception as e:
                 logger.exception("management.backup.status_failed | error=%s", e)
