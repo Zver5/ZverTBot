@@ -154,7 +154,7 @@ def test_systemd_inactive_message():
     )
 
     assert "🤖 <b>Сервис: ZverTBot</b>" in text
-    assert "🔴 Сервис остановлен" in text
+    assert "🔴 Служба не активна" in text
     assert "systemd: inactive" in text
 
 
@@ -171,7 +171,7 @@ def test_systemd_failed_message():
     )
 
     assert "🤖 <b>Сервис: ZverTBot</b>" in text
-    assert "🔴 Сервис завершился с ошибкой" in text
+    assert "🔴 Служба завершилась с ошибкой" in text
     assert "systemd: failed" in text
 
 
@@ -188,7 +188,7 @@ def test_http_failed_message():
     )
 
     assert "📊 <b>Сервис: Stats HTTP HASS</b>" in text
-    assert "🔴 Сервис запущен, но не отвечает" in text
+    assert "🔴 HTTP-проверка не пройдена" in text
     assert "systemd: active · HTTP: failed" in text
 
 
@@ -205,7 +205,7 @@ def test_tcp_failed_message():
     )
 
     assert "🔑 <b>Сервис: SSH</b>" in text
-    assert "🔴 Сервис запущен, но порт недоступен" in text
+    assert "🔴 TCP-порт недоступен" in text
     assert "systemd: active · TCP: failed" in text
 
 
@@ -222,7 +222,7 @@ def test_udp_failed_message():
     )
 
     assert "🛡️ <b>Сервис: AWG</b>" in text
-    assert "🔴 Сервис запущен, но порт недоступен" in text
+    assert "🔴 UDP-проверка не пройдена" in text
     assert "systemd: active · UDP: failed" in text
 
 
@@ -239,7 +239,7 @@ def test_backup_failed_message():
     )
 
     assert "💾 <b>Сервис: Backup</b>" in text
-    assert "🔴 Последний бэкап завершился с ошибкой" in text
+    assert "🔴 Ошибка резервного копирования" in text
 
 
 def test_backup_stale_message():
@@ -255,7 +255,7 @@ def test_backup_stale_message():
     )
 
     assert "💾 <b>Сервис: Backup</b>" in text
-    assert "🔴 Бэкап просрочен" in text
+    assert "🔴 Нет свежей резервной копии" in text
     assert "последний: 10 ч 0 мин назад" in text
 
 
@@ -273,6 +273,148 @@ def test_details_are_html_escaped():
     assert "&lt;danger&gt; &amp; broken" in text
     assert "<danger>" not in text
 
+
+
+def test_external_connection_refused_is_explained():
+    text = _format_update(
+        update(
+            "home_assistant",
+            MonitorState.UP,
+            MonitorState.DOWN,
+            failure=MonitorFailure.HTTP_FAILED,
+            details="<urlopen error [Errno 111] Connection refused>",
+        ),
+        MonitorCategory.OPTIONAL,
+    )
+
+    assert "🏠 <b>Сервис: Home Assistant</b>" in text
+    assert "🔴 Подключение отклонено" in text
+    assert "Удалённый узел отклонил соединение" in text
+    assert "Проверьте адрес, порт" in text
+    assert "Connection refused" in text
+    assert "&lt;urlopen error" in text
+    assert "<urlopen error" not in text
+    assert "Время события:" in text
+
+
+def test_external_timeout_has_specific_recommendation():
+    text = _format_update(
+        update(
+            "qnap",
+            MonitorState.UP,
+            MonitorState.DOWN,
+            failure=MonitorFailure.HTTP_FAILED,
+            details="timed out",
+        ),
+        MonitorCategory.OPTIONAL,
+    )
+
+    assert "🗄️ <b>Сервис: QNAP</b>" in text
+    assert "🔴 Превышено время ожидания" in text
+    assert "перегрузка узла" in text
+    assert "Проверьте сеть" in text
+
+
+def test_external_dns_error_has_specific_recommendation():
+    text = _format_update(
+        update(
+            "home_assistant",
+            MonitorState.UP,
+            MonitorState.DOWN,
+            failure=MonitorFailure.HTTP_FAILED,
+            details="Temporary failure in name resolution",
+        ),
+        MonitorCategory.OPTIONAL,
+    )
+
+    assert "🔴 Не удалось определить адрес сервера" in text
+    assert "DNS" in text
+
+
+def test_external_http_500_is_explained():
+    text = _format_update(
+        update(
+            "qnap",
+            MonitorState.UP,
+            MonitorState.DOWN,
+            failure=MonitorFailure.HTTP_FAILED,
+            details="HTTP 500",
+        ),
+        MonitorCategory.OPTIONAL,
+    )
+
+    assert "🔴 Ошибка сервера HTTP 500" in text
+    assert "На удалённом веб-сервисе произошла ошибка" in text
+
+
+def test_not_installed_is_explained():
+    text = _format_update(
+        update(
+            "awg",
+            MonitorState.UP,
+            MonitorState.DOWN,
+            failure=MonitorFailure.NOT_INSTALLED,
+            details="AWG service not installed",
+        ),
+        MonitorCategory.OPTIONAL,
+    )
+
+    assert "🔴 Служба не установлена" in text
+    assert "Проверьте установку и имя службы" in text
+
+
+def test_backup_timestamp_failure_is_explained():
+    text = _format_update(
+        update(
+            "backup",
+            MonitorState.UP,
+            MonitorState.DOWN,
+            failure=MonitorFailure.BACKUP_TIMESTAMP,
+            details="last backup timestamp unavailable",
+        ),
+        MonitorCategory.OPTIONAL,
+    )
+
+    assert "🔴 Не удалось определить время последнего бэкапа" in text
+    assert "метку времени и часы сервера" in text
+
+
+def test_config_failure_is_explained():
+    text = _format_update(
+        update(
+            "xray",
+            MonitorState.UP,
+            MonitorState.DOWN,
+            failure=MonitorFailure.CONFIG_FAILED,
+            details="active; VLESS listen port unavailable",
+        ),
+        MonitorCategory.OPTIONAL,
+    )
+
+    assert "🔴 Ошибка конфигурации" in text
+    assert "конфигурационный файл" in text
+    assert "VLESS listen port unavailable" in text
+
+
+def test_recovery_timestamp_uses_human_readable_format(monkeypatch):
+    from datetime import datetime
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 10, 13, 11, 0, tzinfo=tz)
+
+    monkeypatch.setattr(
+        "services.vps_monitor_runner.datetime",
+        FixedDatetime,
+    )
+
+    text = _format_update(
+        update("home_assistant", MonitorState.DOWN, MonitorState.UP),
+        MonitorCategory.OPTIONAL,
+    )
+
+    assert "13.10.2026, 11:00 MSK" in text
 
 def test_notification_requires_admin_chat(monkeypatch, tmp_path: Path):
     monkeypatch.chdir(tmp_path)
@@ -358,7 +500,7 @@ def test_recovery_transition_is_sent(monkeypatch, tmp_path: Path):
 
     send.assert_called_once()
     assert "💾 <b>Сервис: Backup</b>" in send.call_args.args[1]
-    assert "🟢 Бэкап снова выполняется успешно" in send.call_args.args[1]
+    assert "🟢 Резервное копирование восстановлено" in send.call_args.args[1]
 
 
 def test_multiple_admin_chats_receive_same_event(monkeypatch, tmp_path: Path):

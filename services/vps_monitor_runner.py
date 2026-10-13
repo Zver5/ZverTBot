@@ -110,6 +110,94 @@ def _format_backup_age(details: str) -> str:
     return f"{minutes} мин назад"
 
 
+def _external_http_failure(details: str) -> tuple[str, str, str]:
+    """Return a user-friendly explanation for an external HTTP failure."""
+    value = details.lower()
+
+    if (
+        "connection refused" in value
+        or "errno 111" in value
+        or "winerror 10061" in value
+    ):
+        return (
+            "🔴 Подключение отклонено",
+            "Удалённый узел отклонил соединение.",
+            "Проверьте адрес, порт и правила firewall.",
+        )
+
+    if (
+        "timed out" in value
+        or "timeout" in value
+        or "errno 110" in value
+        or "winerror 10060" in value
+    ):
+        return (
+            "🔴 Превышено время ожидания",
+            "Возможны проблемы с сетью или перегрузка узла.",
+            "Проверьте сеть и доступность службы.",
+        )
+
+    if (
+        "name or service not known" in value
+        or "temporary failure in name resolution" in value
+        or "failed to resolve" in value
+        or "getaddrinfo failed" in value
+        or "nodename nor servname provided" in value
+    ):
+        return (
+            "🔴 Не удалось определить адрес сервера",
+            "Не удалось определить IP-адрес узла.",
+            "Проверьте имя хоста и DNS.",
+        )
+
+    if "network is unreachable" in value or "errno 101" in value:
+        return (
+            "🔴 Нет сетевого маршрута",
+            "Нет сетевого маршрута до целевого узла.",
+            "Проверьте маршрут, шлюз и VPN.",
+        )
+
+    if "no route to host" in value or "errno 113" in value:
+        return (
+            "🔴 Узел недоступен по сети",
+            "Не удалось установить соединение с узлом.",
+            "Проверьте маршрутизацию и firewall.",
+        )
+
+    if "ssl" in value or "certificate verify failed" in value:
+        return (
+            "🔴 Ошибка TLS-соединения",
+            "Не удалось установить HTTPS-соединение.",
+            "Проверьте сертификат, имя хоста и время сервера.",
+        )
+
+    if details.upper().startswith("HTTP "):
+        try:
+            status_code = int(details.split()[1])
+        except (IndexError, ValueError):
+            status_code = 0
+
+        if status_code >= 500:
+            return (
+                f"🔴 Ошибка сервера HTTP {status_code}",
+                "На удалённом веб-сервисе произошла ошибка.",
+                "Проверьте приложение и его журнал.",
+            )
+
+        if status_code >= 400:
+            return (
+                f"🔴 HTTP-запрос отклонён ({status_code})",
+                "Возможны ошибки URL, авторизации или настроек доступа.",
+                "Проверьте URL и настройки доступа.",
+            )
+
+    return (
+        "🔴 Не удалось проверить доступность сервиса",
+        "Причину сетевой или HTTP-ошибки определить не удалось.",
+        "Проверьте URL, порт и журнал сервиса.",
+    )
+
+
 def _format_update(
     update: StateUpdate,
     category: MonitorCategory,
@@ -120,84 +208,134 @@ def _format_update(
         update.name,
         ("⚙️", update.name),
     )
-    timestamp = datetime.now(ZoneInfo("Europe/Moscow")).strftime("%Y-%m-%d %H:%M MSK")
+    timestamp = datetime.now(ZoneInfo("Europe/Moscow")).strftime(
+        "%d.%m.%Y, %H:%M MSK"
+    )
+
+    lines = [
+        f"{icon} <b>Сервис: {html.escape(name)}</b>",
+    ]
 
     if update.current == MonitorState.UP:
         if update.name == "backup":
-            status = "🟢 Бэкап снова выполняется успешно"
+            lines.append("🟢 Резервное копирование восстановлено")
         else:
-            status = "🟢 Работа восстановлена"
-
-        lines = [
-            f"{icon} <b>Сервис: {name}</b>",
-            status,
-        ]
+            lines.append("🟢 Работа восстановлена")
 
         if update.name in EXTERNAL_MONITORS and update.details:
             lines.append(f"🌐 {html.escape(update.details)}")
 
-        lines.append(f"⏱️ {timestamp}")
+        lines.append(f"🕒 Время события: {timestamp}")
         return "\n".join(lines)
 
-    details = update.details
+    details = update.details or ""
+    failure = str(update.failure or "")
 
     if update.name == "backup":
-        age = _format_backup_age(update.details)
-        if update.failure == "backup_stale" and age:
-            status = "🔴 Бэкап просрочен"
-            technical = f"последний: {age}"
-            technical_icon = "💾"
+        age = _format_backup_age(details)
+
+        if failure == "backup_stale":
+            lines.append("🔴 Нет свежей резервной копии")
+            if age:
+                lines.append(f"💾 последний: {age}")
+            lines.append("🔧 Проверьте расписание бэкапа и хранилище.")
+        elif failure == "backup_timestamp":
+            lines.append("🔴 Не удалось определить время последнего бэкапа")
+            lines.append("🔧 Проверьте метку времени и часы сервера.")
         else:
-            status = "🔴 Последний бэкап завершился с ошибкой"
-            technical = ""
-            technical_icon = ""
+            lines.append("🔴 Ошибка резервного копирования")
+            lines.append("🔧 Проверьте журнал бэкапа и доступность хранилища.")
+
+    elif failure == "http_failed" and update.name in EXTERNAL_MONITORS:
+        status, explanation, action = _external_http_failure(details)
+        lines.extend([status, f"📋 {explanation}", f"🔧 {action}"])
+        if details:
+            lines.append(f"🔎 Технические данные: {html.escape(details)}")
+
+    elif failure == "systemd_failed":
+        lines.extend(
+            [
+                "🔴 Служба завершилась с ошибкой",
+                "⚙️ systemd: failed",
+                "🔧 Журнал: journalctl -u &lt;имя-службы&gt;",
+            ]
+        )
+
+    elif failure == "systemd_inactive":
+        lines.extend(
+            [
+                "🔴 Служба не активна",
+                "⚙️ systemd: inactive",
+            ]
+        )
+
+    elif failure == "not_installed":
+        lines.extend(
+            [
+                "🔴 Служба не установлена или не обнаружена",
+                "🔧 Проверьте установку и имя службы.",
+            ]
+        )
+
+    elif failure == "http_failed":
+        lines.extend(
+            [
+                "🔴 HTTP-проверка не пройдена",
+                "🌐 systemd: active · HTTP: failed",
+            ]
+        )
+        if details:
+            lines.append(f"🔎 Технические данные: {html.escape(details)}")
+
+    elif failure == "tcp_failed":
+        lines.extend(
+            [
+                "🔴 TCP-порт недоступен",
+                "📋 Служба может продолжать работать.",
+                "🔌 systemd: active · TCP: failed",
+            ]
+        )
+
+    elif failure == "udp_failed":
+        lines.extend(
+            [
+                "🔴 UDP-проверка не пройдена",
+                "🔗 systemd: active · UDP: failed",
+            ]
+        )
+
+    elif failure == "client_failed":
+        lines.extend(
+            [
+                "🔴 Внутренняя проверка не пройдена",
+                f"🔍 Проверка: {html.escape(details or 'client: failed')}",
+            ]
+        )
+
+    elif failure == "config_failed":
+        lines.extend(
+            [
+                "🔴 Ошибка конфигурации",
+                "🔧 Проверьте конфигурационный файл.",
+            ]
+        )
+        if details:
+            lines.append(f"🔎 Технические данные: {html.escape(details)}")
 
     else:
-        if update.failure == "systemd_failed":
-            status = "🔴 Сервис завершился с ошибкой"
-            technical = "systemd: failed"
-            technical_icon = "💥"
-        elif update.failure == "systemd_inactive":
-            status = "🔴 Сервис остановлен"
-            technical = "systemd: inactive"
-            technical_icon = "⚙️"
-        elif update.failure == "http_failed":
-            if update.name in EXTERNAL_MONITORS:
-                status = "🔴 Сервис недоступен"
-                technical = update.details or "HTTP: failed"
-            else:
-                status = "🔴 Сервис запущен, но не отвечает"
-                technical = "systemd: active · HTTP: failed"
-            technical_icon = "🌐"
-        elif update.failure == "tcp_failed":
-            status = "🔴 Сервис запущен, но порт недоступен"
-            technical = "systemd: active · TCP: failed"
-            technical_icon = "🔌"
-        elif update.failure == "udp_failed":
-            status = "🔴 Сервис запущен, но порт недоступен"
-            technical = "systemd: active · UDP: failed"
-            technical_icon = "🔗"
-        elif update.failure == "client_failed":
-            status = "🔴 Сервис запущен, но проверка не прошла"
-            technical = "systemd: active · client: failed"
-            technical_icon = "🔍"
-        else:
-            status = "🔴 Сервис недоступен"
-            technical = details or "причина не определена"
-            technical_icon = "❓"
+        lines.extend(
+            [
+                "🔴 Сервис недоступен",
+                "📋 Мониторинг обнаружил проблему, но не смог точно "
+                "определить её причину.",
+                "🔧 Проверьте состояние службы и её журналы.",
+            ]
+        )
+        if details:
+            lines.append(f"🔎 Технические данные: {html.escape(details)}")
 
-    lines = [
-        f"{icon} <b>Сервис: {name}</b>",
-        status,
-    ]
-
-    if technical:
-        lines.append(f"{technical_icon} {html.escape(technical)}")
-
-    lines.append(f"⏱️ {timestamp}")
-
+    lines.append(f"🕒 Время события: {timestamp}")
     return "\n".join(lines)
-
 
 def _queue_notifications(
     updates: list[StateUpdate],
