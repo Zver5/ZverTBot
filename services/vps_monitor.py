@@ -21,6 +21,7 @@ from config.paths import DATA_DIR, RCLONE_STATUS_JSON
 from services.awg.runtime import (
     discover_awg_units,
     get_listening_port,
+    is_awg_installed,
 )
 from services.xray.config_manager import load_xray_config
 from utils.service_control import run_systemctl
@@ -257,20 +258,25 @@ def check_external_monitors() -> list[MonitorResult]:
 def check_long_running_service(
     name: str,
     category: MonitorCategory,
+    *,
+    missing_is_healthy: bool | None = None,
 ) -> MonitorResult:
     """Check a normal long-running systemd service."""
     unit = f"{name}.service"
 
     exists = _systemctl("list-unit-files", unit)
     if unit not in exists.stdout:
+        if missing_is_healthy is None:
+            missing_is_healthy = category == MonitorCategory.OPTIONAL
+
         return MonitorResult(
             name=name,
             category=category,
-            healthy=category == MonitorCategory.OPTIONAL,
+            healthy=missing_is_healthy,
             details="service not installed",
             failure=(
                 None
-                if category == MonitorCategory.OPTIONAL
+                if missing_is_healthy
                 else MonitorFailure.NOT_INSTALLED
             ),
         )
@@ -344,6 +350,7 @@ def check_xray() -> MonitorResult:
     service = check_long_running_service(
         "xray",
         MonitorCategory.OPTIONAL,
+        missing_is_healthy=False,
     )
 
     if not service.healthy:
@@ -382,15 +389,28 @@ def check_awg_service(
     unit_name: str | None = None,
 ) -> MonitorResult:
     """Check all AWG systemd units, interfaces and listening ports."""
-    units = [unit_name] if unit_name else discover_awg_units()
+    if unit_name:
+        units = [unit_name]
+    else:
+        if not is_awg_installed():
+            return MonitorResult(
+                name="awg",
+                category=MonitorCategory.OPTIONAL,
+                healthy=False,
+                details="AWG service not installed",
+                failure=MonitorFailure.NOT_INSTALLED,
+            )
 
-    if not units:
-        return MonitorResult(
-            name="awg",
-            category=MonitorCategory.OPTIONAL,
-            healthy=True,
-            details="AWG service not installed",
-        )
+        units = discover_awg_units()
+
+        if not units:
+            return MonitorResult(
+                name="awg",
+                category=MonitorCategory.OPTIONAL,
+                healthy=False,
+                details="AWG installed but no service instances found",
+                failure=MonitorFailure.SYSTEMD_INACTIVE,
+            )
 
     results = []
 

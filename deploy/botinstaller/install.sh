@@ -359,7 +359,7 @@ extract_archive() {
             "$INSTALL_DIR/config/config.py" | head -1
     )"
 
-    if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+    if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$'; then
         fail "Invalid or missing BOT_VERSION in config/config.py"
     fi
 

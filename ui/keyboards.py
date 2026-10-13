@@ -29,11 +29,13 @@ from core.navigation import (
     NAV_MANAGE_CALLBACK,
     NAV_NETWORK_CALLBACK,
     NAV_SYSTEM_CALLBACK,
+    NAV_VPN_CONFIG_CALLBACK,
     PROCESS_KILL_CALLBACK,
     PROCESS_MENU_CALLBACK,
     PROCESS_SEARCH_CALLBACK,
     PROCESS_TOP_CALLBACK,
 )
+from services.vpn_config_status import get_missing_config_protocols
 from services.xray.link_generator import xray_get_ports
 
 
@@ -63,6 +65,14 @@ def main_menu_kb():
         ),
         types.InlineKeyboardButton("💾 Бэкапы", callback_data=NAV_BACKUPS_CALLBACK),
     )
+
+    if get_missing_config_protocols():
+        kb.add(
+            types.InlineKeyboardButton(
+                "⚙️ СОЗДАТЬ КОНФИГ",
+                callback_data=NAV_VPN_CONFIG_CALLBACK,
+            )
+        )
 
     return kb
 
@@ -556,4 +566,55 @@ def ai_diagnosis_menu_kb():
         types.InlineKeyboardButton("↩️ Назад", callback_data=NAV_BACK_CALLBACK),
     )
 
+    return kb
+
+
+def vpn_config_menu_kb(protocols=None):
+    """Клавиатура выбора протокола для создания серверного конфига."""
+    if protocols is None:
+        protocols = get_missing_config_protocols()
+
+    kb = types.InlineKeyboardMarkup(row_width=1)
+
+    for protocol in protocols:
+        label = {
+            "xray": "⚡ Xray",
+            "awg": "🛡 AmneziaWG",
+        }.get(protocol, protocol)
+
+        kb.add(
+            types.InlineKeyboardButton(
+                label,
+                callback_data=f"vpn_config:protocol:{protocol}",
+            )
+        )
+
+    kb.add(
+        types.InlineKeyboardButton(
+            "↩️ Назад",
+            callback_data=NAV_BACK_CALLBACK,
+        )
+    )
+    return kb
+
+
+def vpn_config_mode_kb(protocol):
+    """Клавиатура выбора способа создания серверного конфига."""
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        types.InlineKeyboardButton(
+            "🤖 Автоматически",
+            callback_data=f"vpn_config:auto:{protocol}",
+        ),
+        types.InlineKeyboardButton(
+            "⚙️ Свои параметры",
+            callback_data=f"vpn_config:custom:{protocol}",
+        ),
+    )
+    kb.add(
+        types.InlineKeyboardButton(
+            "↩️ Назад",
+            callback_data="vpn_config:back",
+        )
+    )
     return kb

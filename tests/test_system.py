@@ -166,33 +166,18 @@ def test_speedtest_invalid_json(mock_run, mock_which):
     assert "Ошибка парсинга JSON" in text
 
 
-@patch("services.system.shutil.which")
-def test_awg_not_installed(mock_which):
-    mock_which.return_value = None
+def test_awg_not_installed(monkeypatch):
+    monkeypatch.setattr("services.system.is_awg_installed", lambda: False)
 
     text = get_service_logs("awg")
 
     assert "AmneziaWG не установлен" in text
 
 
-@patch("services.system.shutil.which")
-@patch("services.system.service_exists")
-def test_awg_service_not_installed(mock_exists, mock_which):
-    mock_which.return_value = "/usr/bin/awg"
-    mock_exists.return_value = False
-
-    text = get_service_logs("awg")
-
-    assert "AmneziaWG не установлен" in text
-
-
-@patch("services.system.shutil.which")
-@patch("services.system.service_exists")
 @patch("services.system.discover_awg_units")
 @patch("services.system.subprocess.run")
-def test_awg_empty_output(mock_run, mock_discover, mock_exists, mock_which):
-    mock_which.return_value = "/usr/bin/awg"
-    mock_exists.return_value = True
+def test_awg_empty_output(mock_run, mock_discover, monkeypatch):
+    monkeypatch.setattr("services.system.is_awg_installed", lambda: True)
     mock_discover.return_value = ["awg-quick@awg0"]
     mock_run.return_value = Mock(stdout="")
 
@@ -201,15 +186,12 @@ def test_awg_empty_output(mock_run, mock_discover, mock_exists, mock_which):
     assert "awg0: интерфейс не отвечает" in text
 
 
-@patch("services.system.shutil.which")
-@patch("services.system.service_exists")
 @patch("services.system.discover_awg_units")
 @patch("services.system.subprocess.run")
 def test_awg_success_strips_ansi(
-    mock_run, mock_discover, mock_exists, mock_which
+    mock_run, mock_discover, monkeypatch
 ):
-    mock_which.return_value = "/usr/bin/awg"
-    mock_exists.return_value = True
+    monkeypatch.setattr("services.system.is_awg_installed", lambda: True)
     mock_discover.return_value = ["awg-quick@awg0"]
     mock_run.return_value = Mock(
         stdout="\x1b[32minterface: awg0\x1b[0m\npeer: test"
@@ -224,15 +206,12 @@ def test_awg_success_strips_ansi(
     assert "\x1b" not in text
 
 
-@patch("services.system.shutil.which")
-@patch("services.system.service_exists")
 @patch("services.system.discover_awg_units")
 @patch("services.system.subprocess.run")
 def test_awg_exception(
-    mock_run, mock_discover, mock_exists, mock_which
+    mock_run, mock_discover, monkeypatch
 ):
-    mock_which.return_value = "/usr/bin/awg"
-    mock_exists.return_value = True
+    monkeypatch.setattr("services.system.is_awg_installed", lambda: True)
     mock_discover.return_value = ["awg-quick@awg0"]
     mock_run.side_effect = Exception("awg failed")
 

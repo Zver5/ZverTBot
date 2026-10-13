@@ -31,6 +31,7 @@ BACKUP_HISTORY = "backup_history"
 
 ADMIN_HOME = "main"
 ADMIN_CREATE = "create_menu"
+ADMIN_VPN_CONFIG = "vpn_config_menu"
 ADMIN_CLIENTS = "clients_menu"
 ADMIN_CLIENTS_MANAGE = "clients_manage_menu"
 ADMIN_MANAGE = "manage_menu"

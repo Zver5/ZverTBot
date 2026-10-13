@@ -1,5 +1,6 @@
 import subprocess
 
+import services.awg.runtime as awg_runtime
 from services.awg.runtime import (
     AwgPeerRuntime,
     _parse_show_output,
@@ -156,3 +157,35 @@ def test_get_latest_handshakes_returns_empty_on_failure(monkeypatch):
     )
 
     assert get_latest_handshakes() == {}
+
+
+def test_is_awg_installed(monkeypatch):
+    monkeypatch.setattr(
+        awg_runtime.shutil,
+        "which",
+        lambda command: "/usr/bin/awg" if command == "awg" else None,
+    )
+
+    class Result:
+        stdout = "awg-quick@.service disabled enabled\\n"
+        returncode = 0
+
+    monkeypatch.setattr(awg_runtime.subprocess, "run", lambda *args, **kwargs: Result())
+
+    assert awg_runtime.is_awg_installed() is True
+
+
+def test_is_awg_installed_without_systemd_template(monkeypatch):
+    monkeypatch.setattr(
+        awg_runtime.shutil,
+        "which",
+        lambda command: "/usr/bin/awg" if command == "awg" else None,
+    )
+
+    class Result:
+        stdout = "awg-quick.target static -\\n"
+        returncode = 0
+
+    monkeypatch.setattr(awg_runtime.subprocess, "run", lambda *args, **kwargs: Result())
+
+    assert awg_runtime.is_awg_installed() is False

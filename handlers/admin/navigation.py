@@ -19,6 +19,7 @@ from core.navigation import (
     NAV_MANAGE_CALLBACK,
     NAV_NETWORK_CALLBACK,
     NAV_SYSTEM_CALLBACK,
+    NAV_VPN_CONFIG_CALLBACK,
     navigation,
 )
 from core.state import LAST_MAIN_MENU_MSGS
@@ -33,6 +34,7 @@ from ui.keyboards import (
     manage_menu_kb,
     network_menu_kb,
     system_menu_kb,
+    vpn_config_menu_kb,
 )
 from ui.screens import (
     ADMIN_AI_LOGS,
@@ -48,6 +50,7 @@ from ui.screens import (
     ADMIN_MANAGE,
     ADMIN_NETWORK,
     ADMIN_SYSTEM,
+    ADMIN_VPN_CONFIG,
     BACKUP_HISTORY,
 )
 from utils.error_handler import handle_errors
@@ -81,6 +84,10 @@ def _render_static_screen(text_factory, keyboard_factory):
 
 _STATIC_SCREENS = {
     ADMIN_HOME: _render_static_screen(get_help_text, main_menu_kb),
+    ADMIN_VPN_CONFIG: _render_static_screen(
+        lambda: "⚙️ Создание серверного конфига\n\nВыберите протокол:",
+        vpn_config_menu_kb,
+    ),
     ADMIN_CREATE: _render_static_screen(
         lambda: "👤 *Создание клиента*",
         create_menu_kb,
@@ -258,6 +265,7 @@ def handle_navigation_callback(bot, cid, call, data):
 
     screen_id = {
         NAV_CREATE_CALLBACK: ADMIN_CREATE,
+        NAV_VPN_CONFIG_CALLBACK: ADMIN_VPN_CONFIG,
         NAV_CLIENTS_CALLBACK: ADMIN_CLIENTS,
         NAV_CLIENTS_MANAGE_CALLBACK: ADMIN_CLIENTS_MANAGE,
         NAV_CLIENTS_VLESS_CALLBACK: ADMIN_CLIENTS_VLESS,

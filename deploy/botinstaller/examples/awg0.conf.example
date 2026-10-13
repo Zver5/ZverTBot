@@ -13,8 +13,3 @@ H1 = 1
 H2 = 2
 H3 = 3
 H4 = 4
-
-# Name: example
-[Peer]
-PublicKey = REPLACE_WITH_CLIENT_PUBLIC_KEY
-AllowedIPs = 10.66.66.12/32

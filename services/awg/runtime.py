@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass
 
@@ -147,6 +148,31 @@ def _parse_show_output(output: str) -> dict[str, AwgPeerRuntime]:
 
     flush()
     return peers
+
+
+def is_awg_installed() -> bool:
+    """Return whether AmneziaWG tools and its systemd template are installed."""
+    if shutil.which("awg") is None:
+        return False
+
+    try:
+        result = subprocess.run(
+            [
+                "systemctl",
+                "list-unit-files",
+                "awg-quick@.service",
+                "--no-legend",
+                "--no-pager",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+    return "awg-quick@.service" in result.stdout
 
 
 def discover_awg_units() -> list[str]:

@@ -1,0 +1,351 @@
+"""Создание серверных конфигураций VPN."""
+
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+from config.paths import AWG_CONF, XRAY_CONF
+from services.awg.config_manager import get_awg_readiness
+from services.awg.network import build_awg_network_hooks
+from services.xray.config_manager import (
+    get_xray_readiness,
+    load_xray_config,
+    save_xray_config,
+)
+
+
+@dataclass(frozen=True)
+class SetupResult:
+    """Результат создания серверной конфигурации."""
+
+    protocol: str
+    created: bool
+    message: str
+
+
+XRAY_DEFAULT_PORT = 2096
+XRAY_DEFAULT_SNI = "speed.cloudflare.com"
+XRAY_DEFAULT_DEST = "speed.cloudflare.com:443"
+
+AWG_DEFAULT_PORT = 58352
+AWG_DEFAULT_ADDRESS = "10.66.66.1/24"
+
+
+def _run_command(*args: str, timeout: int = 10, input_text: str | None = None) -> str:
+    """Запускает системную команду и возвращает stdout."""
+    result = subprocess.run(
+        list(args),
+        input=input_text,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+
+    if result.returncode != 0:
+        error = result.stderr.strip() or result.stdout.strip() or "неизвестная ошибка"
+        raise RuntimeError(f"{args[0]} {' '.join(args[1:])}: {error}")
+
+    return result.stdout.strip()
+
+
+def _run_xray(*args: str) -> str:
+    """Запускает Xray CLI."""
+    return _run_command("xray", *args)
+
+
+def _generate_uuid() -> str:
+    """Генерирует UUID средствами Xray."""
+    value = _run_xray("uuid").strip()
+    if not value:
+        raise RuntimeError("Xray не вернул UUID")
+    return value
+
+
+def _generate_reality_private_key() -> str:
+    """Генерирует Reality private key средствами Xray."""
+    output = _run_xray("x25519")
+
+    for line in output.splitlines():
+        line = line.strip()
+        if line.startswith("PrivateKey:"):
+            value = line.split(":", 1)[1].strip()
+            if value:
+                return value
+
+    raise RuntimeError("Xray не вернул Reality private key")
+
+
+def _generate_short_id() -> str:
+    """Генерирует Reality shortId."""
+    return os.urandom(8).hex()
+
+
+def _build_xray_config(
+    *,
+    port: int = XRAY_DEFAULT_PORT,
+    sni: str = XRAY_DEFAULT_SNI,
+    dest: str = XRAY_DEFAULT_DEST,
+) -> dict:
+    """Создаёт минимальную рабочую конфигурацию VLESS Reality."""
+    return {
+        "log": {"loglevel": "warning"},
+        "inbounds": [
+            {
+                "listen": "0.0.0.0",
+                "port": port,
+                "protocol": "vless",
+                "settings": {
+                    "clients": [
+                        {
+                            "id": _generate_uuid(),
+                            "flow": "xtls-rprx-vision",
+                            "email": "default",
+                            "level": 0,
+                        }
+                    ],
+                    "decryption": "none",
+                },
+                "streamSettings": {
+                    "network": "tcp",
+                    "security": "reality",
+                    "realitySettings": {
+                        "dest": dest,
+                        "serverNames": [sni],
+                        "privateKey": _generate_reality_private_key(),
+                        "shortIds": [_generate_short_id()],
+                    },
+                },
+            },
+            {
+                "listen": "127.0.0.1",
+                "port": 10085,
+                "protocol": "dokodemo-door",
+                "settings": {
+                    "address": "127.0.0.1"
+                },
+                "tag": "api",
+            },
+        ],
+        "outbounds": [
+            {"protocol": "freedom", "tag": "direct"},
+            {"protocol": "blackhole", "tag": "block"},
+            {"protocol": "freedom", "tag": "api"},
+        ],
+        "routing": {
+            "rules": [
+                {
+                    "type": "field",
+                    "inboundTag": ["api"],
+                    "outboundTag": "api",
+                }
+            ]
+        },
+    }
+
+
+def _backup_path(path: Path) -> Path:
+    """Создаёт backup существующего конфига."""
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    backup = path.with_name(f"{path.name}.bak-{timestamp}")
+    shutil.copy2(path, backup)
+    return backup
+
+
+def _save_awg_candidate(content: str) -> None:
+    """Проверяет и атомарно сохраняет AWG candidate."""
+    ready, problems = get_awg_readiness(content)
+    if not ready:
+        raise ValueError("AWG config не прошёл проверку: " + "; ".join(problems))
+
+    from services.awg.config_manager import save_awg_config
+
+    save_awg_config(content)
+
+
+def _generate_awg_private_key() -> str:
+    """Генерирует приватный ключ AmneziaWG."""
+    value = _run_command("awg", "genkey").strip()
+    if not value:
+        raise RuntimeError("AWG не вернул private key")
+    return value
+
+
+def _extract_awg_peer_blocks(content: str) -> list[str]:
+    """Сохраняет реальные [Peer]-блоки без placeholder-пиров."""
+    lines = content.splitlines(keepends=True)
+    blocks: list[str] = []
+    start: int | None = None
+
+    for index, line in enumerate(lines):
+        if line.strip().lower() != "[peer]":
+            continue
+
+        block_start = index
+
+        # Сохраняем только комментарий непосредственно перед этим [Peer].
+        if index > 0 and lines[index - 1].strip().startswith("#"):
+            block_start = index - 1
+
+        if start is not None:
+            block = "".join(lines[start:block_start]).strip()
+            if block and "REPLACE_WITH_CLIENT_PUBLIC_KEY" not in block:
+                blocks.append(block + "\n")
+
+        start = block_start
+
+    if start is not None:
+        block = "".join(lines[start:]).strip()
+        if block and "REPLACE_WITH_CLIENT_PUBLIC_KEY" not in block:
+            blocks.append(block + "\n")
+
+    return blocks
+
+
+def _build_awg_config(
+    *,
+    port: int = AWG_DEFAULT_PORT,
+    peer_blocks: list[str] | tuple[str, ...] = (),
+    network_hooks=None,
+) -> str:
+    """Создаёт серверный AWG-конфиг, сохраняя переданные peers."""
+    private_key = _generate_awg_private_key()
+
+    lines = [
+        "[Interface]",
+        f"PrivateKey = {private_key}",
+        f"Address = {AWG_DEFAULT_ADDRESS}",
+        f"ListenPort = {port}",
+        "Jc = 4",
+        "Jmin = 40",
+        "Jmax = 70",
+        "S1 = 117",
+        "S2 = 74",
+        "S3 = 63",
+        "S4 = 82",
+        "H1 = 1",
+        "H2 = 2",
+        "H3 = 3",
+        "H4 = 4",
+    ]
+
+    if network_hooks is not None:
+        lines.extend(
+            f"PostUp = {command}"
+            for command in network_hooks.post_up
+        )
+        lines.extend(
+            f"PostDown = {command}"
+            for command in network_hooks.post_down
+        )
+
+    if peer_blocks:
+        lines.append("")
+        lines.extend(block.rstrip("\n") for block in peer_blocks)
+
+    return "\n".join(lines) + "\n"
+
+
+def setup_xray_server(
+    *,
+    port: int = XRAY_DEFAULT_PORT,
+    sni: str = XRAY_DEFAULT_SNI,
+    dest: str = XRAY_DEFAULT_DEST,
+) -> SetupResult:
+    """Создаёт Xray-конфиг только если текущий конфиг нерабочий."""
+    try:
+        if XRAY_CONF.exists():
+            try:
+                current = load_xray_config()
+                ready, _ = get_xray_readiness(current)
+
+                from services.xray.config_manager import validate_xray_config
+
+                if ready and validate_xray_config(current):
+                    return SetupResult(
+                        "xray",
+                        False,
+                        f"Рабочий Xray config уже существует: {XRAY_CONF}",
+                    )
+            except Exception:
+                pass
+
+            backup = _backup_path(XRAY_CONF)
+        else:
+            backup = None
+
+        config = _build_xray_config(port=port, sni=sni, dest=dest)
+        save_xray_config(config)
+
+        # Installer создаёт новый Xray config с 0644. Для нового файла
+        # сохраняем ту же модель доступа, чтобы Xray мог читать config
+        # независимо от пользователя systemd-службы. Для существующего
+        # файла atomic_write() сохраняет его исходные owner/group/mode.
+        if backup is None:
+            XRAY_CONF.chmod(0o644)
+
+        message = f"Xray config создан: {XRAY_CONF}"
+        if backup:
+            message += f"\nBackup старого конфига: {backup}"
+
+        return SetupResult("xray", True, message)
+
+    except Exception as exc:
+        return SetupResult(
+            "xray",
+            False,
+            f"Не удалось создать Xray config: {exc}",
+        )
+
+
+def setup_awg_server(
+    *,
+    port: int = AWG_DEFAULT_PORT,
+) -> SetupResult:
+    """Создаёт AWG-конфиг только если текущий конфиг нерабочий."""
+    try:
+        if AWG_CONF.exists():
+            current = AWG_CONF.read_text(encoding="utf-8")
+            ready, _ = get_awg_readiness(current)
+
+            if ready:
+                return SetupResult(
+                    "awg",
+                    False,
+                    f"Рабочий AWG config уже существует: {AWG_CONF}",
+                )
+
+            backup = _backup_path(AWG_CONF)
+            peer_blocks = _extract_awg_peer_blocks(current)
+        else:
+            backup = None
+            peer_blocks = []
+
+        network_hooks = build_awg_network_hooks(
+            address=AWG_DEFAULT_ADDRESS,
+        )
+
+        config = _build_awg_config(
+            port=port,
+            peer_blocks=peer_blocks,
+            network_hooks=network_hooks,
+        )
+        _save_awg_candidate(config)
+
+        message = f"AWG config создан: {AWG_CONF}"
+        if backup:
+            message += f"\nBackup старого конфига: {backup}"
+
+        return SetupResult("awg", True, message)
+
+    except Exception as exc:
+        return SetupResult(
+            "awg",
+            False,
+            f"Не удалось создать AWG config: {exc}",
+        )
