@@ -78,7 +78,7 @@ Home Assistant не обращается напрямую к внутренни�
 ```text
 ZverTBot-ha/
 └── custom_components/
-    └── zvertbot/
+    └── zvertbotvps/
 ```
 
 В Home Assistant компонент устанавливается в:
