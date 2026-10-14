@@ -335,6 +335,46 @@ def test_get_xray_clients_from_config_deduplicates_same_uuid():
     ]
 
 
+
+def test_sync_and_archive_preserves_vless_when_xray_config_unavailable(
+    monkeypatch, tmp_path
+):
+    import importlib.util
+    from pathlib import Path
+
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "hass/traffic/xray-traffic-collect.py"
+    )
+    spec = importlib.util.spec_from_file_location("xray_traffic_collect", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    archive_file = tmp_path / "archive.json"
+    awg_users_file = tmp_path / "awg-users.json"
+
+    monkeypatch.setattr(module, "ARCHIVE_JSON", archive_file)
+    monkeypatch.setattr(module, "AWG_USERS_JSON", awg_users_file)
+    monkeypatch.setattr(
+        module,
+        "load_xray_config",
+        Mock(side_effect=ValueError("invalid Xray config")),
+    )
+
+    client_data = {
+        "uplink": 100,
+        "downlink": 200,
+        "total": 300,
+        "proto": "vless",
+    }
+    data = {"clients": {"ZverX": client_data.copy()}}
+
+    module.sync_and_archive(data)
+
+    assert data["clients"]["ZverX"] == client_data
+    assert not archive_file.exists()
+
+
 def test_collect_deduplicates_xray_client_across_inbounds(monkeypatch, tmp_path):
     import importlib.util
     from pathlib import Path

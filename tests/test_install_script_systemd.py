@@ -51,6 +51,23 @@ def test_optional_services_are_started():
     assert not missing, f"Optional services missing from startup list: {missing}"
 
 
+
+def test_xray_traffic_is_gated_by_install_flag():
+    start = INSTALL.index('    OPTIONAL_DIR=')
+    end = INSTALL.index('    ok "Systemd services installed"', start)
+    optional_block = INSTALL[start:end]
+
+    assert (
+        'if [[ "$name" == xray-traffic.* && "$INSTALL_XRAY" != true ]]; then'
+        in optional_block
+    )
+    assert 'if [ "$INSTALL_XRAY" = true ]; then' in optional_block
+    assert (
+        'OPTIONAL_SERVICES="xray-traffic.timer\n${OPTIONAL_SERVICES}"'
+        in optional_block
+    )
+
+
 def test_every_timer_has_matching_service():
     folders = [
         ROOT / "deploy" / "botinstaller" / "systemd" / "core",

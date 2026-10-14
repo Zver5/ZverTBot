@@ -1180,6 +1180,10 @@ zvertbot-vps-monitor.service
 
             name=$(basename "$file")
 
+            if [[ "$name" == xray-traffic.* && "$INSTALL_XRAY" != true ]]; then
+                continue
+            fi
+
             sed \
                 "s#{{INSTALL_DIR}}#${INSTALL_DIR}#g" \
                 "$file" \
@@ -1191,9 +1195,13 @@ zvertbot-vps-monitor.service
         systemctl daemon-reload
 
         OPTIONAL_SERVICES="
-xray-traffic.timer
 zvertbot-backup.timer
 "
+
+        if [ "$INSTALL_XRAY" = true ]; then
+            OPTIONAL_SERVICES="xray-traffic.timer
+${OPTIONAL_SERVICES}"
+        fi
 
         for service in $OPTIONAL_SERVICES
         do

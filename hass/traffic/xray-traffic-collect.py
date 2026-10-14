@@ -43,11 +43,15 @@ def sync_and_archive(data):
     """Синхронизирует usage.json с реальными конфигами и архивирует удаленных"""
     try:
         active_users = set()
+        xray_config_loaded = False
+
         # Собираем активных Xray
         try:
             active_users.update(get_vless_client_names(load_xray_config()))
-        except (FileNotFoundError, ValueError) as exc:
+            xray_config_loaded = True
+        except (OSError, ValueError) as exc:
             logger.warning("xray_traffic.config.load_failed | error=%s", exc)
+
         # Собираем активных AWG
         if AWG_USERS_JSON.exists():
             with open(AWG_USERS_JSON) as f:
@@ -58,7 +62,13 @@ def sync_and_archive(data):
         archive_file = ARCHIVE_JSON
 
         # Переносим "призраков" в архив
-        ghosts = [n for n in list(clients.keys()) if n not in active_users]
+        # Не архивируем клиентов, если не удалось прочитать конфиг Xray.
+        # Иначе временная ошибка конфигурации выглядит как удаление всех VLESS.
+        ghosts = (
+            [n for n in list(clients.keys()) if n not in active_users]
+            if xray_config_loaded
+            else []
+        )
         if ghosts:
             if os.path.exists(archive_file):
                 with open(archive_file) as archive_file_obj:
