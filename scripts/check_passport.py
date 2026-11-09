@@ -790,8 +790,6 @@ except OSError:
 
 if unattended_config:
     ok("unattended-upgrades        ЧЁРНЫЙ СПИСОК ВКЛЮЧЕН")
-else:
-    warn("unattended-upgrades           чёрный список не настроен")
 
 
 section("💾 БЭКАПЫ В ОБЛАКО")
@@ -1095,12 +1093,14 @@ for name, path in [
     ),
 ]:
     if path.is_file():
-        age = max(0, int(time.time() - path.stat().st_mtime))
+        mtime = path.stat().st_mtime
+        age = max(0, int(time.time() - mtime))
+        modified_at = datetime.fromtimestamp(mtime).astimezone().strftime("%d.%m.%Y %H:%M:%S")
 
         if age < 3600:
-            ok(f"{name:<15} СВЕЖИЙ ({age}s)")
+            ok(f"{name:<15} СВЕЖИЙ ({age}s) | изменён: {modified_at}")
         else:
-            warn(f"{name:<15} устарел ({age}s)")
+            warn(f"{name:<15} устарел ({age}s) | изменён: {modified_at}")
     else:
         warn(f"{name:<15} отсутствует")
 
