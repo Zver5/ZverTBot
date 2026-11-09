@@ -34,3 +34,6 @@ data/geoip/*.mmdb
 # Deploy generated output
 deploy/output/*
 !deploy/output/.gitkeep
+
+# MkDocs generated documentation
+site/
