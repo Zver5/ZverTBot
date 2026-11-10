@@ -78,8 +78,10 @@ def test_speedtest_error(mock_run, mock_which):
     assert "network error" in text
 
 
+@patch("services.system.shutil.which")
 @patch("services.system.subprocess.run")
-def test_speedtest_exception(mock_run):
+def test_speedtest_exception(mock_run, mock_which):
+    mock_which.return_value = "/usr/local/bin/speedtest"
     import subprocess
 
     mock_run.side_effect = subprocess.TimeoutExpired(cmd="speedtest", timeout=120)

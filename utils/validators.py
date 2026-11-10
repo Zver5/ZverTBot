@@ -56,6 +56,8 @@ def is_username_unique_vless(username: str, config_path: str = XRAY_CONF) -> boo
             ):
                 return False
         return True
+    except FileNotFoundError:
+        return True  # Xray не установлен — VLESS-клиентов нет
     except Exception:
         return False
 

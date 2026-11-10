@@ -132,12 +132,12 @@ def test_is_username_unique_vless_returns_false_on_invalid_config(tmp_path):
     assert is_username_unique_vless("Alice", str(config_path)) is False
 
 
-def test_is_username_unique_vless_returns_false_when_config_missing(tmp_path):
+def test_is_username_unique_vless_returns_true_when_config_missing(tmp_path):
     from utils.validators import is_username_unique_vless
 
     config_path = tmp_path / "missing.json"
 
-    assert is_username_unique_vless("Alice", str(config_path)) is False
+    assert is_username_unique_vless("Alice", str(config_path)) is True
 
 
 def test_is_username_unique_awg_returns_true_when_registry_missing(tmp_path):
