@@ -543,3 +543,78 @@ def test_collect_preserves_xray_snapshot_on_query_failure(monkeypatch, tmp_path)
     assert client["_snap_up"] == 1100
     assert client["_snap_down"] == 2000
     assert client["_delta"] == 100
+
+def test_collect_awg_only_creates_and_updates_usage_without_xray(
+    tmp_path,
+    monkeypatch,
+):
+    import importlib.util
+    from pathlib import Path
+
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "hass/traffic/xray-traffic-collect.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "xray_traffic_collect_awg_only",
+        path,
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    usage_file = tmp_path / "usage.json"
+    awg_users_file = tmp_path / "awg.json"
+    archive_file = tmp_path / "archive.json"
+
+    awg_users_file.write_text(
+        json.dumps({"awg_user": {"ip": "10.0.0.2"}}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(module, "OUT", str(usage_file))
+    monkeypatch.setattr(module, "AWG_USERS_JSON", awg_users_file)
+    monkeypatch.setattr(module, "ARCHIVE_JSON", archive_file)
+    monkeypatch.setattr(
+        module,
+        "load_xray_config",
+        Mock(side_effect=FileNotFoundError("Xray is not installed")),
+    )
+    monkeypatch.setattr(module, "get_xray_last_ips", lambda: {})
+    monkeypatch.setattr(module, "log", lambda message: None)
+
+    samples = iter(
+        [
+            {"awg_user": {"up": 120, "down": 240}},
+            {"awg_user": {"up": 160, "down": 300}},
+        ]
+    )
+    monkeypatch.setattr(
+        module,
+        "get_awg_raw_stats",
+        lambda: next(samples),
+    )
+
+    assert not usage_file.exists()
+
+    module.collect()
+
+    first = json.loads(usage_file.read_text(encoding="utf-8"))
+    first_client = first["clients"]["awg_user"]
+
+    assert first_client["proto"] == "awg"
+    assert first_client["uplink"] == 0
+    assert first_client["downlink"] == 0
+    assert first_client["_snap_up"] == 120
+    assert first_client["_snap_down"] == 240
+
+    module.collect()
+
+    second = json.loads(usage_file.read_text(encoding="utf-8"))
+    client = second["clients"]["awg_user"]
+
+    assert client["proto"] == "awg"
+    assert client["uplink"] == 40
+    assert client["downlink"] == 60
+    assert client["total"] == 100
+    assert client["_snap_up"] == 160
+    assert client["_snap_down"] == 300

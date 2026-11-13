@@ -34,6 +34,7 @@ from config.secrets import HA_TUNNEL_IP  # noqa: E402
 from services.passport_helpers import (  # noqa: E402
     is_awg_installed,
     is_xray_installed,
+    traffic_timer_status,
 )
 from services.xray.config_manager import load_xray_config  # noqa: E402
 
@@ -336,12 +337,47 @@ section("⏱ TIMERS")
 timers = [
     "vps-stats.timer",
     "geoip-collect.timer",
-    "xray-traffic.timer",
     "zvertbot-backup.timer",
 ]
 
 for t in timers:
     check_enabled_active_unit(t, "АКТИВЕН")
+
+# Сборщик статистики нужен, если установлен хотя бы один VPN-протокол.
+timer_xray_installed = is_xray_installed(
+    shutil.which("xray"),
+    XRAY_CONF.exists(),
+    bool(run(["systemctl", "cat", "xray.service"])),
+)
+timer_awg_installed = is_awg_installed(
+    shutil.which("awg"),
+    discover_awg_interfaces(),
+)
+
+traffic_timer_enabled = run(
+    ["systemctl", "is-enabled", "xray-traffic.timer"]
+)
+traffic_timer_active = run(
+    ["systemctl", "is-active", "xray-traffic.timer"]
+)
+
+traffic_status = traffic_timer_status(
+    timer_xray_installed,
+    timer_awg_installed,
+    traffic_timer_enabled == "enabled",
+    traffic_timer_active == "active",
+)
+
+if traffic_status == "skip":
+    info("xray-traffic.timer          НЕ ТРЕБУЕТСЯ (Xray/AWG не установлены)")
+elif traffic_status == "ok":
+    ok("xray-traffic.timer          ВКЛ + АКТИВЕН")
+else:
+    warn(
+        "xray-traffic.timer          "
+        f"{traffic_timer_enabled or 'not-found'} + "
+        f"{traffic_timer_active or 'inactive'}"
+    )
 
 
 section("🌐 HTTP ПРОВЕРКИ")

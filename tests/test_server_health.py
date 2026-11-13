@@ -97,6 +97,11 @@ def test_collect_server_health_includes_command_results(monkeypatch):
     monkeypatch.setattr(server_health, "_run", fake_run)
     monkeypatch.setattr(
         server_health,
+        "discover_awg_units",
+        lambda: ["awg-quick@awg0"],
+    )
+    monkeypatch.setattr(
+        server_health,
         "get_service_state",
         lambda service: {
             "xray": "active",

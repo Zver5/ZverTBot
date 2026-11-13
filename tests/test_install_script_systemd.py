@@ -52,19 +52,40 @@ def test_optional_services_are_started():
 
 
 
-def test_xray_traffic_is_gated_by_install_flag():
+def test_traffic_collector_is_enabled_for_xray_or_awg():
     start = INSTALL.index('    OPTIONAL_DIR=')
     end = INSTALL.index('    ok "Systemd services installed"', start)
     optional_block = INSTALL[start:end]
 
     assert (
-        'if [[ "$name" == xray-traffic.* && "$INSTALL_XRAY" != true ]]; then'
+        'if [[ "$name" == xray-traffic.* && "$INSTALL_XRAY" != true '
+        '&& "$INSTALL_AWG" != true ]]; then'
         in optional_block
     )
-    assert 'if [ "$INSTALL_XRAY" = true ]; then' in optional_block
+    assert (
+        'if [ "$INSTALL_XRAY" = true ] || [ "$INSTALL_AWG" = true ]; then'
+        in optional_block
+    )
     assert (
         'OPTIONAL_SERVICES="xray-traffic.timer\n${OPTIONAL_SERVICES}"'
         in optional_block
+    )
+
+    xray_start = INSTALL.index(
+        '    if [ "$INSTALL_XRAY" = true ]; then',
+        INSTALL.index("OPTIONAL COMPONENTS"),
+    )
+    awg_start = INSTALL.index(
+        '    if [ "$INSTALL_AWG" = true ]; then',
+        xray_start,
+    )
+    verification = INSTALL[xray_start:awg_start]
+
+    assert 'verify_pass "xray-traffic.timer" "enabled"' in verification
+    assert 'verify_fail "xray-traffic.timer" "disabled"' in verification
+    assert (
+        'if [ "$INSTALL_XRAY" = true ] || [ "$INSTALL_AWG" = true ]; then'
+        in verification
     )
 
 

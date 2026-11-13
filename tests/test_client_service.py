@@ -24,6 +24,17 @@ def test_get_users_list_vless(monkeypatch, tmp_path):
     assert sorted(result) == ["user1", "user2"]
 
 
+def test_get_users_list_vless_without_xray_config(monkeypatch):
+    """Отсутствие конфига Xray не должно ломать список клиентов."""
+
+    def missing_config():
+        raise FileNotFoundError("Xray config not found")
+
+    monkeypatch.setattr(cs, "load_xray_config", missing_config)
+
+    assert cs.get_users_list("vless") == []
+
+
 def test_get_users_list_awg(monkeypatch):
     """Список AWG клиентов из реестра"""
     monkeypatch.setattr(

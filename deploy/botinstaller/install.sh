@@ -1180,7 +1180,7 @@ zvertbot-vps-monitor.service
 
             name=$(basename "$file")
 
-            if [[ "$name" == xray-traffic.* && "$INSTALL_XRAY" != true ]]; then
+            if [[ "$name" == xray-traffic.* && "$INSTALL_XRAY" != true && "$INSTALL_AWG" != true ]]; then
                 continue
             fi
 
@@ -1198,7 +1198,7 @@ zvertbot-vps-monitor.service
 zvertbot-backup.timer
 "
 
-        if [ "$INSTALL_XRAY" = true ]; then
+        if [ "$INSTALL_XRAY" = true ] || [ "$INSTALL_AWG" = true ]; then
             OPTIONAL_SERVICES="xray-traffic.timer
 ${OPTIONAL_SERVICES}"
         fi
@@ -1398,14 +1398,16 @@ verify_install() {
             verify_fail "Xray config" "not found"
         fi
 
+    else
+        verify_skip "Xray" "not requested"
+    fi
+
+    if [ "$INSTALL_XRAY" = true ] || [ "$INSTALL_AWG" = true ]; then
         if systemctl is-enabled --quiet xray-traffic.timer 2>/dev/null; then
             verify_pass "xray-traffic.timer" "enabled"
         else
             verify_fail "xray-traffic.timer" "disabled"
         fi
-
-    else
-        verify_skip "Xray" "not requested"
     fi
 
     if [ "$INSTALL_AWG" = true ]; then

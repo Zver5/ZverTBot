@@ -14,6 +14,7 @@ from handlers.features.passport_check import (
 from services.passport_helpers import (
     is_awg_installed,
     is_xray_installed,
+    traffic_timer_status,
 )
 
 
@@ -388,3 +389,39 @@ class TestOptionalPassportComponents:
     )
     def test_awg_installed(self, binary, interfaces):
         assert is_awg_installed(binary, interfaces)
+
+class TestTrafficTimerStatus:
+    @pytest.mark.parametrize(
+        (
+            "xray_installed",
+            "awg_installed",
+            "timer_enabled",
+            "timer_active",
+            "expected",
+        ),
+        [
+            (False, False, False, False, "skip"),
+            (False, False, True, True, "skip"),
+            (True, False, True, True, "ok"),
+            (False, True, True, True, "ok"),
+            (True, True, True, True, "ok"),
+            (True, False, False, False, "warn"),
+            (False, True, False, False, "warn"),
+            (True, False, True, False, "warn"),
+            (False, True, False, True, "warn"),
+        ],
+    )
+    def test_status(
+        self,
+        xray_installed,
+        awg_installed,
+        timer_enabled,
+        timer_active,
+        expected,
+    ):
+        assert traffic_timer_status(
+            xray_installed,
+            awg_installed,
+            timer_enabled,
+            timer_active,
+        ) == expected

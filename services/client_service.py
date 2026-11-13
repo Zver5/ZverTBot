@@ -53,7 +53,14 @@ def get_users_list(proto):
     """Получить список имён клиентов для протокола"""
     users = []
     if proto == "vless":
-        users = get_all_vless_clients(load_xray_config())
+        try:
+            users = get_all_vless_clients(load_xray_config())
+        except FileNotFoundError as exc:
+            logger.debug(
+                "client.users_list.xray_unavailable | error=%s",
+                exc,
+            )
+            users = []
     elif proto == "awg":
         users = list(load_awg_registry().keys())
     return list(set(users))
