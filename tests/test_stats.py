@@ -61,3 +61,28 @@ def test_bot_stats_exception(mock_load):
 
     assert "Ошибка чтения статистики" in text
     assert "boom" in text
+
+@patch("services.stats.load_stats")
+def test_bot_stats_localizes_legacy_and_navigation_actions(mock_load):
+    mock_load.return_value = {
+        "commands": {
+            "Nav:Analytics": 1,
+            "Nav:System": 1,
+            "Nav:Clients": 1,
+            "/Start": 1,
+            "Test:": 1,
+        },
+        "total_commands": 5,
+        "start_date": "2026-11-15",
+    }
+
+    text = get_bot_stats_text()
+
+    assert "📊 Аналитика" in text
+    assert "⚙️ Система" in text
+    assert "👥 Клиенты" in text
+    assert "🚀 Запуск бота" in text
+    assert "🧪 Тестовое действие" in text
+    assert "Nav:" not in text
+    assert "Test:" not in text
+    assert "/Start" not in text

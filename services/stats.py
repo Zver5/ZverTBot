@@ -244,24 +244,107 @@ def get_bot_stats_text():
         text += f"📅 *Сбор данных с:* {BT}{start_date}{BT}{NL}"
         text += f"🔢 *Всего команд:* {BT}{total}{BT}{NL}"
         text += f"🏆 *Топ-10 команд:*{NL}"
+        NAV_NAMES = {
+            "nav:back": "↩️ Назад",
+            "nav:home": "🏠 Главное меню",
+            "nav:manage": "⚙️ Управление",
+            "nav:clients": "👥 Клиенты",
+            "nav:clients_manage": "👥 Управление клиентами",
+            "nav:clients_vless": "⚡ Клиенты VLESS",
+            "nav:clients_awg": "🛡️ Клиенты AWG",
+            "nav:clients_rename": "✏️ Переименование клиента",
+            "nav:clients_search_vless": "🔍 Поиск VLESS-клиента",
+            "nav:clients_search_awg": "🔍 Поиск AWG-клиента",
+            "nav:create": "➕ Создание конфигурации",
+            "nav:vpn_config": "🔐 VPN-конфигурация",
+            "nav:system": "⚙️ Система",
+            "nav:network": "🌐 Сеть",
+            "nav:analytics": "📊 Аналитика",
+            "nav:backups": "💾 Резервные копии",
+            "nav:backup_history": "📜 История резервных копий",
+            "nav:ai_logs": "🤖 Диагностика ИИ",
+            "nav:client_home": "🏠 Кабинет клиента",
+            "nav:client_back": "↩️ Назад в кабинет",
+            "nav:client_help": "❓ Помощь клиенту",
+            "nav:admin_tickets": "🎫 Обращения пользователей",
+            "nav:admin_tickets_new": "🆕 Новые обращения",
+            "nav:admin_tickets_working": "🛠️ Обращения в работе",
+            "nav:admin_tickets_closed": "✅ Закрытые обращения",
+        }
+        EXTRA_NAMES = {
+            "start": "🚀 Запуск бота",
+            "/start": "🚀 Запуск бота",
+            "help": "❓ Помощь",
+            "/help": "❓ Помощь",
+            "passport_check": "🛂 Проверка паспорта",
+            "net_mtr": "🌐 Диагностика маршрута",
+            "ip_reputation": "🛡️ Проверка репутации IP",
+            "ai_log_bot": "🤖 Диагностика бота",
+            "ai_log_xray": "🤖 Диагностика Xray",
+            "ai_log_awg": "🤖 Диагностика AWG",
+            "ai_server_health": "🤖 Диагностика сервера",
+            "create_ticket": "🎫 Создание обращения",
+            "ticket_topic_internet": "🌐 Обращение: интернет",
+            "ticket_topic_vpn": "🔐 Обращение: VPN",
+            "ticket_topic_config": "⚙️ Обращение: конфигурация",
+            "ticket_topic_other": "💬 Другое обращение",
+            "ticket_cancel": "❌ Отмена обращения",
+        }
+        DYNAMIC_NAMES = (
+            ("ssh_delete_confirm_", "🔐 Подтверждение удаления SSH-ключа"),
+            ("ssh_delete_final_", "🗑️ Удаление SSH-ключа"),
+            ("confirm_del:", "🗑️ Подтверждение удаления клиента"),
+            ("ask_del:", "🗑️ Запрос удаления клиента"),
+            ("client:account:", "👤 Аккаунт клиента"),
+            ("client:stats:", "📊 Статистика клиента"),
+            ("client:conf:", "📄 Конфигурация клиента"),
+            ("client:conf_ru:", "📄 Конфигурация клиента"),
+            ("get_passport_file:", "🛂 Получение файла проверки"),
+            ("admin_reply_ticket:", "✉️ Ответ на обращение"),
+            ("admin_close_ticket:", "🔒 Закрытие обращения"),
+            ("ticket_reply:", "✉️ Ответ пользователя"),
+            ("admin_closed_page:", "📄 Страница закрытых обращений"),
+            ("admin_closed_ticket:", "🎫 Просмотр закрытого обращения"),
+            ("ticket_reply_cancel:", "❌ Отмена ответа"),
+            ("approve_bind_", "✅ Подтверждение привязки"),
+            ("reject_bind_", "❌ Отклонение привязки"),
+            ("do_bind_", "🔗 Выполнение привязки"),
+            ("bind_existing_", "🔗 Привязка существующего клиента"),
+            ("unbind_select_", "🔗 Выбор отвязки"),
+            ("unbind_confirm_", "⚠️ Подтверждение отвязки"),
+            ("stats_", "📊 Статистика"),
+            ("mtr_target_", "🌐 Проверка маршрута"),
+            ("qr_select_", "🔳 Выбор QR-конфигурации"),
+            ("qr:", "🔳 QR-код конфигурации"),
+            ("conf:", "📄 Просмотр конфигурации"),
+        )
+
         for i, (cmd, count) in enumerate(sorted_commands, 1):
-            cmd_display = CMD_NAMES.get(cmd)
+            raw_cmd = str(cmd).strip()
+            normalized_cmd = raw_cmd.lower()
+            cmd_display = (
+                CMD_NAMES.get(raw_cmd)
+                or CMD_NAMES.get(normalized_cmd)
+                or NAV_NAMES.get(normalized_cmd)
+                or EXTRA_NAMES.get(normalized_cmd)
+            )
+
+            if cmd_display is None and normalized_cmd.startswith("test:"):
+                cmd_display = "🧪 Тестовое действие"
 
             if cmd_display is None:
-                dynamic_prefixes = (
-                    ("ssh_delete_confirm_", "🔐 Подтверждение удаления SSH-ключа"),
-                    ("ssh_delete_final_", "🗑️ Удаление SSH-ключа"),
-                    ("confirm_del:", "🗑️ Подтверждение удаления клиента"),
-                    ("client:account:", "👤 Аккаунт клиента"),
-                )
-
-                for prefix, label in dynamic_prefixes:
-                    if cmd.startswith(prefix):
+                for prefix, label in DYNAMIC_NAMES:
+                    if normalized_cmd.startswith(prefix):
                         cmd_display = label
                         break
 
+            if cmd_display is None and normalized_cmd.startswith("nav:"):
+                nav_action = normalized_cmd[4:].replace("_", " ").title()
+                cmd_display = f"🧭 Навигация: {nav_action}"
+
             if cmd_display is None:
-                cmd_display = cmd.replace("_", " ").title()
+                cmd_display = raw_cmd.replace("_", " ").title()
+
             percent = (count / total * 100) if total > 0 else 0
             text += f"{i}. {cmd_display} — {count} ({percent:.1f}%){NL}"
         return text
