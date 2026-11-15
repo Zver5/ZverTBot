@@ -778,12 +778,22 @@ create_env() {
     mkdir -p "$INSTALL_DIR"
 
     ENV_TEMPLATE="${INSTALL_DIR}/deploy/botinstaller/.env.example"
+    ENV_TEMPLATE_TARGET="${INSTALL_DIR}/.env.example"
 
-    if [ ! -f "$ENV_TEMPLATE" ]; then
-        warn ".env.example not found in deploy archive: $ENV_TEMPLATE"
+    if [ ! -s "$ENV_TEMPLATE" ]; then
+        warn "Required .env.example not found or empty: $ENV_TEMPLATE"
         exit 1
     fi
 
+    # Keep the template in the root of the installed application.
+    install -m 644 "$ENV_TEMPLATE" "$ENV_TEMPLATE_TARGET"
+
+    if ! cmp -s "$ENV_TEMPLATE" "$ENV_TEMPLATE_TARGET"; then
+        warn "Failed to install .env.example into: $ENV_TEMPLATE_TARGET"
+        exit 1
+    fi
+
+    # Create the runtime .env from the template.
     cp "$ENV_TEMPLATE" "$ENV_FILE"
 
     python3 - "$ENV_FILE" \

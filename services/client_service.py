@@ -130,14 +130,22 @@ def rename_client(old_name, new_name):
     original_bindings = None
 
     try:
-        original_xray = copy.deepcopy(load_xray_config())
-    except Exception as e:
-        errors.append(f"Xray: {e}")
-
-    try:
         original_awg = copy.deepcopy(load_awg_registry())
     except Exception as e:
         errors.append(f"AWG: {e}")
+
+    try:
+        original_xray = copy.deepcopy(load_xray_config())
+    except FileNotFoundError as e:
+        if original_awg is None or old_name not in original_awg:
+            errors.append(f"Xray: {e}")
+        else:
+            logger.debug(
+                "client.rename.xray_unavailable | awg_client=%s",
+                old_name,
+            )
+    except Exception as e:
+        errors.append(f"Xray: {e}")
 
     try:
         original_bindings = copy.deepcopy(load_client_bindings())
@@ -168,16 +176,17 @@ def rename_client(old_name, new_name):
             raise
 
         # Xray
-        try:
-            xray = copy.deepcopy(original_xray)
-            if rename_client_in_config(xray, old_name, new_name):
-                save_xray_config(xray)
-                xray_changed = True
-                reload_xray()
-                success = True
-        except Exception as e:
-            errors.append(f"Xray: {e}")
-            raise
+        if original_xray is not None:
+            try:
+                xray = copy.deepcopy(original_xray)
+                if rename_client_in_config(xray, old_name, new_name):
+                    save_xray_config(xray)
+                    xray_changed = True
+                    reload_xray()
+                    success = True
+            except Exception as e:
+                errors.append(f"Xray: {e}")
+                raise
 
         # AWG
         try:
@@ -491,13 +500,15 @@ def send_qr_or_conf(bot, chat_id, username, proto, config_only=False):
 
 def show_history_action(bot, cid, mid=None):
     """Показать последние действия бота."""
+    import html
+
     try:
         history = load_history()
 
         if not history:
             text = "📜 История пуста. Совершите любое действие."
         else:
-            text = "📜 *ИСТОРИЯ ДЕЙСТВИЙ БОТА* (Последние 5)\n"
+            text = "📜 <b>ИСТОРИЯ ДЕЙСТВИЙ БОТА</b> (Последние 5)\n"
             text += "━━━━━━━━━━━━━━━━━━━━\n"
 
             for entry in history[-5:]:
@@ -523,12 +534,13 @@ def show_history_action(bot, cid, mid=None):
                 elif act == "ОТВЯЗКА":
                     act = "ОТВЯЗАН КЛИЕНТ"
 
-                text += f"\n🕐 {entry['time']}\n"
-                text += f"🎯 Цель: `{entry['target']}`\n"
-                text += f"{icon} *Действие:* {escape_md(act)}\n"
+                text += f"\n🕐 {html.escape(str(entry.get('time', '')))}\n"
+                target = html.escape(str(entry.get("target", "")))
+                text += f"🎯 Цель: <code>{target}</code>\n"
+                text += f"{icon} <b>Действие:</b> {html.escape(str(act))}\n"
 
                 if entry["details"]:
-                    text += f"📝 {entry['details']}\n"
+                    text += f"📝 {html.escape(str(entry.get('details', '')))}\n"
 
                 text += "━━━━━━━━━━━━━━━━━━━━"
 
@@ -548,14 +560,14 @@ def show_history_action(bot, cid, mid=None):
                 text,
                 cid,
                 mid,
-                parse_mode="Markdown",
+                parse_mode="HTML",
                 reply_markup=kb,
             )
         else:
             bot.send_message(
                 cid,
                 text,
-                parse_mode="Markdown",
+                parse_mode="HTML",
                 reply_markup=kb,
             )
 

@@ -87,6 +87,7 @@ rsync -a \
 --filter="+ data/storage.py" \
 --filter="+ data/traffic.py" \
 --exclude="data/geoip/*" \
+--filter="+ data/__init__.py" \
 --filter="- data/*" \
 --exclude="hass/stats/*.json" \
 --exclude="hass/traffic/*.json" \
@@ -104,14 +105,44 @@ rsync -a \
 "$BASE_DIR/" \
 "$BUILD_DIR/$APP_NAME/"
 
-cp "$BASE_DIR/.env.example" \
-"$BUILD_DIR/$APP_NAME/deploy/botinstaller/.env.example"
+# .env.example is required by the installer to create the initial .env.
+ENV_TEMPLATE="$BASE_DIR/.env.example"
+ENV_TARGET="$BUILD_DIR/$APP_NAME/deploy/botinstaller/.env.example"
+
+if [ ! -s "$ENV_TEMPLATE" ]; then
+    echo "ERROR: Required .env.example is missing or empty: $ENV_TEMPLATE" >&2
+    exit 1
+fi
+
+mkdir -p "$(dirname "$ENV_TARGET")"
+cp "$ENV_TEMPLATE" "$ENV_TARGET"
+
+if ! cmp -s "$ENV_TEMPLATE" "$ENV_TARGET"; then
+    echo "ERROR: .env.example copy verification failed" >&2
+    exit 1
+fi
+
+echo "Verified .env.example in deploy package."
 
 cd "$BUILD_DIR"
 
-tar -czf \
-"$OUTPUT_DIR/${APP_NAME}-deploy-${VERSION}.tar.gz" \
-"$APP_NAME"
+ARCHIVE="$OUTPUT_DIR/${APP_NAME}-deploy-${VERSION}.tar.gz"
+
+tar -czf "$ARCHIVE" "$APP_NAME"
+
+if ! tar -tzf "$ARCHIVE" | grep -Fxq "$APP_NAME/data/__init__.py"; then
+    echo "ERROR: data/__init__.py missing from deploy archive" >&2
+    exit 1
+fi
+
+echo "Verified data/__init__.py inside deploy archive."
+
+if ! tar -tzf "$ARCHIVE" | grep -Fxq "$APP_NAME/deploy/botinstaller/.env.example"; then
+    echo "ERROR: .env.example is missing from deploy archive" >&2
+    exit 1
+fi
+
+echo "Verified .env.example inside deploy archive."
 
 echo
 echo "================================="

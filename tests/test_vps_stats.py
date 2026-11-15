@@ -639,71 +639,46 @@ def test_collect_logs_fail2ban_status_error(monkeypatch, caplog):
     assert "fail2ban failed" in caplog.text
 
 
-def test_collect_deduplicates_xray_client_by_uuid(monkeypatch):
-    import builtins
-    from io import StringIO
+def test_collect_deduplicates_xray_client_by_uuid(monkeypatch, tmp_path):
+    import json
 
-    module = load_vps_stats()
-    real_open = builtins.open
     from services.xray import config_manager
 
-    xray_path = config_manager.XRAY_CONF
-
+    xray_path = tmp_path / "config.json"
+    monkeypatch.setattr(config_manager, "XRAY_CONF", xray_path)
     cfg = {
         "inbounds": [
             {
                 "port": 443,
                 "protocol": "vless",
-                "settings": {
-                    "clients": [
-                        {
-                            "email": "ZverX",
-                            "id": "7910ef31-fe3b-4b35-8a8b-b869e61efce8",
-                        }
-                    ]
-                },
+                "settings": {"clients": [{
+                    "email": "ZverX",
+                    "id": "7910ef31-fe3b-4b35-8a8b-b869e61efce8",
+                }]},
             },
             {
                 "port": 2096,
                 "protocol": "vless",
-                "settings": {
-                    "clients": [
-                        {
-                            "email": "ZverX",
-                            "id": "7910ef31-fe3b-4b35-8a8b-b869e61efce8",
-                        }
-                    ]
-                },
+                "settings": {"clients": [{
+                    "email": "ZverX",
+                    "id": "7910ef31-fe3b-4b35-8a8b-b869e61efce8",
+                }]},
             },
         ]
     }
-
-    def fake_open(path, *args, **kwargs):
-        if Path(path) == xray_path:
-            import json
-
-            return StringIO(json.dumps(cfg))
-        return real_open(path, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "open", fake_open)
-    sys.modules.pop(MODULE_NAME, None)
+    xray_path.write_text(json.dumps(cfg), encoding="utf-8")
 
     module = load_vps_stats()
     module.collect_stats()
 
     matches = [
-        client
-        for client in module.xray_clients_raw
+        client for client in module.xray_clients_raw
         if client["id"] == "7910ef31-fe3b-4b35-8a8b-b869e61efce8"
     ]
-
-    assert matches == [
-        {
-            "name": "ZverX",
-            "id": "7910ef31-fe3b-4b35-8a8b-b869e61efce8",
-        }
-    ]
-
+    assert matches == [{
+        "name": "ZverX",
+        "id": "7910ef31-fe3b-4b35-8a8b-b869e61efce8",
+    }]
 
 def test_xray_client_uses_last_ip_when_current_ip_missing():
 
@@ -817,24 +792,14 @@ def test_collect_logs_awg_handshake_command_error(monkeypatch, caplog):
     assert "awg failed" in caplog.text
 
 
-def test_collect_logs_xray_config_error(monkeypatch, caplog):
-    import builtins
+def test_collect_logs_xray_config_error(monkeypatch, caplog, tmp_path):
     import logging
 
-    real_open = builtins.open
     from services.xray import config_manager
 
-    xray_path = config_manager.XRAY_CONF
-
-    def fake_open(path, *args, **kwargs):
-        if Path(path) == xray_path:
-            from io import StringIO
-
-            return StringIO("{invalid")
-        return real_open(path, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "open", fake_open)
-    sys.modules.pop(MODULE_NAME, None)
+    xray_path = tmp_path / "config.json"
+    monkeypatch.setattr(config_manager, "XRAY_CONF", xray_path)
+    xray_path.write_text("{invalid", encoding="utf-8")
 
     with caplog.at_level(logging.WARNING):
         module = load_vps_stats()
@@ -844,7 +809,6 @@ def test_collect_logs_xray_config_error(monkeypatch, caplog):
     assert module.xray_clients_raw == []
     assert "vps_stats.xray_config.load_failed" in caplog.text
     assert "Expecting" in caplog.text or "JSON" in caplog.text
-
 
 def test_collect_logs_rclone_status_error(monkeypatch, caplog):
     import builtins

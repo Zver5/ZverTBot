@@ -59,6 +59,7 @@ from core.navigation import (
     PROCESS_TOP_RAM_CALLBACK,
     VPN_CONFIG_CALLBACK_PREFIX,
 )
+from data.storage import record_stat_action
 from handlers.admin.bindings import (
     handle_bind_existing_callback,
     handle_bindings_part1_callback,
@@ -897,6 +898,15 @@ def register_callback_router(bot):
                 return
 
             result = route.handler(bot, cid, call, data)
+
+            if result is not False:
+                try:
+                    record_stat_action(route.pattern)
+                except Exception:
+                    logger.exception(
+                        "stats.callback.record_failed | pattern=%s",
+                        route.pattern,
+                    )
 
             logger.debug(
                 (

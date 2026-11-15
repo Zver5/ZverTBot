@@ -121,6 +121,19 @@ def test_setup_xray_server_replaces_broken_config_with_backup(
         "get_xray_readiness",
         lambda config: (False, ["тестовый нерабочий конфиг"]),
     )
+    monkeypatch.setattr(
+        vpn_server_setup,
+        "save_xray_config",
+        lambda config: config_path.write_text(
+            __import__("json").dumps(config),
+            encoding="utf-8",
+        ),
+    )
+    monkeypatch.setattr(
+        vpn_server_setup,
+        "_build_xray_config",
+        lambda **kwargs: {"inbounds": [{"protocol": "vless"}]},
+    )
 
     result = vpn_server_setup.setup_xray_server()
 

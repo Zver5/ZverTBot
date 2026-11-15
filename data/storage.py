@@ -16,6 +16,7 @@ import fcntl
 import json
 import os
 import tempfile
+import threading
 from datetime import datetime
 
 from config.paths import (
@@ -202,6 +203,37 @@ def load_stats():
 def save_stats(stats):
     """Сохранение статистики использования бота."""
     _save_json(BOT_STATS_FILE, stats)
+
+
+_STATS_LOCK = threading.Lock()
+
+
+def record_stat_action(action: str):
+    """Атомарно увеличивает счётчик команды или callback-действия."""
+    if not isinstance(action, str) or not action.strip():
+        return
+
+    action = action.strip()
+    with _STATS_LOCK:
+        stats = load_stats()
+        commands = stats.get("commands")
+        if not isinstance(commands, dict):
+            commands = {}
+
+        try:
+            count = int(commands.get(action, 0))
+        except (TypeError, ValueError):
+            count = 0
+        commands[action] = count + 1
+
+        try:
+            total = int(stats.get("total_commands", 0))
+        except (TypeError, ValueError):
+            total = 0
+
+        stats["commands"] = commands
+        stats["total_commands"] = total + 1
+        save_stats(stats)
 
 
 # =====================================================================

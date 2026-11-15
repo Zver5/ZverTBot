@@ -341,6 +341,29 @@ def test_send_qr_or_conf_awg_no_config():
             cs.send_qr_or_conf(bot, 100, "client1", "awg")
 
 
+def test_show_history_action_html_escapes_dynamic_fields(monkeypatch):
+    """Спецсимволы в истории безопасны для Telegram HTML."""
+    history = [{
+        "time": "15.11 <16:25> & test",
+        "action": "СОЗДАНИЕ",
+        "target": "Zver_2 [test] <client>",
+        "status": "SUCCESS",
+        "details": "name_*_[x]_`tag` <broken> & value",
+    }]
+    monkeypatch.setattr(cs, "load_history", lambda: history)
+    bot = Mock()
+
+    cs.show_history_action(bot, 123)
+
+    args, kwargs = bot.send_message.call_args
+    text = args[1]
+    assert kwargs["parse_mode"] == "HTML"
+    assert "15.11 &lt;16:25&gt; &amp; test" in text
+    assert "Zver_2 [test] &lt;client&gt;" in text
+    assert "name_*_[x]_`tag` &lt;broken&gt; &amp; value" in text
+    assert "<b>Действие:</b> СОЗДАН КЛИЕНТ" in text
+
+
 def test_show_history_action_missing_file(monkeypatch):
     """
     История отсутствует -> пустая история.
@@ -389,7 +412,18 @@ def test_show_history_action_send_error():
 def test_send_qr_or_conf_vless_multiple_links():
     bot = Mock()
 
-    with patch("services.client_service.xray_get_link", return_value="link1\nlink2"):
+    with (
+        patch("services.client_service.xray_get_link", return_value="link1\nlink2"),
+        patch(
+            "services.client_service.load_xray_config",
+            return_value={
+                "inbounds": [
+                    {"protocol": "vless", "port": 443},
+                    {"protocol": "vless", "port": 2096},
+                ]
+            },
+        ),
+    ):
         cs.send_qr_or_conf(bot, 100, "client1", "vless")
 
     bot.send_message.assert_called_once()
@@ -1263,3 +1297,53 @@ def test_show_history_action_logs_send_failure(monkeypatch):
 
     assert second_args[0] == "client.history.send_failed | error=%s"
     assert second_args[1] is send_error
+
+
+
+def test_rename_awg_client_without_xray_config(monkeypatch):
+    """AWG-клиент можно переименовать без установленного Xray."""
+    registry = {"old": {"public_key": "test-key"}}
+    saved_registry = []
+
+    def missing_xray():
+        raise FileNotFoundError("Xray config not found")
+
+    monkeypatch.setattr(cs, "load_xray_config", missing_xray)
+    monkeypatch.setattr(cs, "load_awg_registry", lambda: registry.copy())
+    monkeypatch.setattr(cs, "save_awg_registry", saved_registry.append)
+    monkeypatch.setattr(cs, "load_client_bindings", dict)
+    monkeypatch.setattr(cs, "save_client_bindings", lambda bindings: None)
+    monkeypatch.setattr(cs, "rename_client_in_usage", lambda old, new: False)
+    monkeypatch.setattr(cs, "rename_peer_in_config", lambda old, new: True)
+
+    monkeypatch.setattr(
+        "utils.validators.is_username_unique_vless",
+        lambda username: True,
+    )
+    monkeypatch.setattr(
+        "utils.validators.is_username_unique_awg",
+        lambda username: True,
+    )
+
+    result = cs.rename_client("old", "new")
+
+    assert result == []
+    assert saved_registry == [{"new": {"public_key": "test-key"}}]
+
+
+def test_send_qr_or_conf_vless_config_caption_escapes_username(monkeypatch):
+    """Имя Zver_2 экранируется ровно один раз в заголовке."""
+    bot = Mock()
+    monkeypatch.setattr(
+        cs, "xray_get_link",
+        lambda username: "vless://test@1.2.3.4:443",
+    )
+
+    cs.send_qr_or_conf(
+        bot, 100, "Zver_2", "vless", config_only=True
+    )
+
+    args, kwargs = bot.send_message.call_args
+    assert "Конфигурация для Zver\\_2" in args[1]
+    assert kwargs["parse_mode"] == "Markdown"
+    print("Передано в Telegram:", repr(args[1].splitlines()[0]))

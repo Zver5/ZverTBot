@@ -22,6 +22,17 @@ def allow_awg_username(monkeypatch):
         lambda config: (True, []),
     )
 
+    monkeypatch.setattr(cm.shutil, "which", lambda name: "/usr/bin/xray")
+
+    class ExistingConfig:
+        def is_file(self):
+            return True
+
+        def __str__(self):
+            return "/usr/local/etc/xray/config.json"
+
+    monkeypatch.setattr(cm, "XRAY_CONF", ExistingConfig())
+
 
 # ==========================================================
 # reload_xray
