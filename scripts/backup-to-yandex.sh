@@ -232,21 +232,51 @@ fi
 
 
 
-# Telegram bot PROJECT
+# Telegram bot PROJECT — backup migration-critical state/config files.
 
 if [ -d "${INSTALL_DIR}" ]; then
 
-    cp -r --parents \
-    "${INSTALL_DIR}" \
-    "${TEMP_DIR}/"
+    # .env is mandatory: it contains credentials and runtime configuration.
+    if [ ! -f "${INSTALL_DIR}/.env" ]; then
+        log_error "backup.project.env_missing | path=${INSTALL_DIR}/.env"
+        exit 1
+    fi
+
+    ZVERTBOT_BACKUP_FILES=(
+        .env
+        scripts/backup-to-yandex.sh
+        data/awg_users.json
+        data/bot_history.json
+        data/bot_stats.json
+        data/client_bindings.json
+        data/ip_tokens.json
+        data/pending_bindings.json
+        data/tickets.json
+        data/vps_monitor_notifications.json
+        data/vps_monitor_state.json
+        data/ru_geo.conf
+        hass/geo/geoip.json
+        hass/traffic/usage.json
+        hass/traffic/archive.json
+    )
+
+    for RELATIVE_FILE in "${ZVERTBOT_BACKUP_FILES[@]}"; do
+        SOURCE_FILE="${INSTALL_DIR}/${RELATIVE_FILE}"
+
+        if [ -f "${SOURCE_FILE}" ]; then
+            if ! cp -p --parents "${SOURCE_FILE}" "${TEMP_DIR}/"; then
+                log_error "backup.project.file_copy_failed | path=${SOURCE_FILE}"
+                exit 1
+            fi
+        else
+            log_warn "backup.project.file_missing | path=${SOURCE_FILE}"
+        fi
+    done
 
 else
-
     log_error "backup.project.missing | path=${INSTALL_DIR}"
     exit 1
-
 fi
-
 
 
 # SSH
@@ -293,6 +323,32 @@ if [ -e /etc/sysctl.conf ]; then
     /etc/sysctl.conf \
     "${TEMP_DIR}/"
 
+fi
+
+
+# Fail2ban — custom protection configuration.
+
+if [ -d /etc/fail2ban ]; then
+    FAIL2BAN_BACKUP_FILES=(
+        /etc/fail2ban/jail.local
+        /etc/fail2ban/filter.d/sshd-aggressive.conf
+    )
+
+    for FILE in "${FAIL2BAN_BACKUP_FILES[@]}"; do
+        if [ ! -f "$FILE" ]; then
+            log_error "backup.fail2ban.file_missing | path=${FILE}"
+            exit 1
+        fi
+
+        if ! cp -p --parents "$FILE" "${TEMP_DIR}/"; then
+            log_error "backup.fail2ban.copy_failed | path=${FILE}"
+            exit 1
+        fi
+    done
+
+    log_info "backup.fail2ban.completed | files=${#FAIL2BAN_BACKUP_FILES[@]}"
+else
+    log_warn "backup.fail2ban.not_installed | skipped"
 fi
 
 
