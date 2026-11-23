@@ -71,9 +71,11 @@ write_failed_status() {
     local rc="${1:-1}"
     local error="${2:-Backup script failed}"
     local size_mb=""
+    local size_bytes=""
     local tmp_file="${STATUS_FILE}.tmp.$$"
 
-    size_mb="$(du -m "${BACKUP_DIR}/${BACKUP_NAME}" 2>/dev/null | cut -f1 || true)"
+    size_bytes="$(stat -c%s "${BACKUP_DIR}/${BACKUP_NAME}" 2>/dev/null || echo 0)"
+    size_mb="$(awk "BEGIN {printf \"%.2f\", ${size_bytes:-0}/1048576}")"
 
     if ! command -v jq >/dev/null 2>&1; then
         log_error "backup.status.jq_missing"
@@ -88,11 +90,12 @@ write_failed_status() {
         --arg last_backup "$(TZ='Europe/Moscow' date -Iseconds)" \
         --arg status "failed" \
         --arg size_mb "${size_mb}" \
+        --argjson size_bytes "${size_bytes:-0}" \
         --arg file_name "${BACKUP_NAME}" \
         --arg remote "${BACKUP_REMOTE}:${BACKUP_ROOT_DIR}" \
         --arg error "${error}" \
         --argjson code "${rc}" \
-        '{last_backup:$last_backup,status:$status,size_mb:$size_mb,file_name:$file_name,remote:$remote,error:$error,code:$code}' \
+        '{last_backup:$last_backup,status:$status,size_mb:$size_mb,size_bytes:$size_bytes,file_name:$file_name,remote:$remote,error:$error,code:$code}' \
         > "${tmp_file}"; then
         rm -f -- "${tmp_file}"
         log_error "backup.status.write_failed"
@@ -113,9 +116,11 @@ write_local_only_status() {
     local remote="${1:-}"
     local error="${2:-Backup remote is not configured}"
     local size_mb=""
+    local size_bytes=""
     local tmp_file="${STATUS_FILE}.tmp.$$"
 
-    size_mb="$(du -m "${BACKUP_DIR}/${BACKUP_NAME}" 2>/dev/null | cut -f1 || true)"
+    size_bytes="$(stat -c%s "${BACKUP_DIR}/${BACKUP_NAME}" 2>/dev/null || echo 0)"
+    size_mb="$(awk "BEGIN {printf \"%.2f\", ${size_bytes:-0}/1048576}")"
 
     if ! command -v jq >/dev/null 2>&1; then
         log_error "backup.status.jq_missing"
@@ -131,9 +136,10 @@ write_local_only_status() {
         --arg last_backup "$(TZ='Europe/Moscow' date -Iseconds)" \
         --arg file_name "${BACKUP_NAME}" \
         --arg size_mb "${size_mb}" \
+        --argjson size_bytes "${size_bytes:-0}" \
         --arg remote "${remote}" \
         --arg error "${error}" \
-        '{status:$status,last_backup:$last_backup,file_name:$file_name,size_mb:$size_mb,remote:$remote,error:$error}' \
+        '{status:$status,last_backup:$last_backup,file_name:$file_name,size_mb:$size_mb,size_bytes:$size_bytes,remote:$remote,error:$error}' \
         > "${tmp_file}"; then
         rm -f -- "${tmp_file}"
         log_error "backup.status.write_failed"
@@ -166,11 +172,12 @@ write_success_status() {
         --arg last_backup "$(TZ='Europe/Moscow' date -Iseconds)" \
         --arg status "success" \
         --argjson size_mb "${SIZE_MB}" \
+        --argjson size_bytes "${SIZE_BYTES}" \
         --argjson duration_sec "${BACKUP_DURATION_SEC}" \
         --arg next_run "${NEXT_RUN}" \
         --arg file_name "${BACKUP_NAME}" \
         --arg remote "${BACKUP_REMOTE}:${BACKUP_ROOT_DIR}/configs/" \
-        '{last_backup:$last_backup,status:$status,size_mb:$size_mb,duration_sec:$duration_sec,next_run:$next_run,file_name:$file_name,remote:$remote}' \
+        '{last_backup:$last_backup,status:$status,size_mb:$size_mb,size_bytes:$size_bytes,duration_sec:$duration_sec,next_run:$next_run,file_name:$file_name,remote:$remote}' \
         > "${tmp_file}"; then
         rm -f -- "${tmp_file}"
         log_error "backup.status.write_failed"

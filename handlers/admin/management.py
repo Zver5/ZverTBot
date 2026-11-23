@@ -25,7 +25,7 @@ from core.navigation import NAV_BACK_CALLBACK, navigation
 from core.state import LAST_STATUS_MSGS
 from data.traffic import load_usage
 from handlers.admin.navigation import render_navigation_screen
-from services.backup import format_msk_time, get_backup_history_text
+from services.backup import format_backup_size, format_msk_time, get_backup_history_text
 from services.client_service import show_history_action
 from services.ip_server import start_ip_server_once
 from services.ip_tokens import create_ip_token
@@ -652,13 +652,13 @@ def run_manual_backup(bot, cid, message_id):
                 with open(RCLONE_STATUS_JSON) as f:
                     status = json.load(f)
                 backup_name = status.get("file_name", "N/A")
-                size_mb = status.get("size_mb", 0)
+                size_label = format_backup_size(status)
 
                 if status.get("status") == "local_only":
                     text = (
                         f"⚠️ *Бэкап создан локально*\n\n"
                         f"📦 Файл: `{backup_name}`\n"
-                        f"📏 Размер: `{size_mb} MB`\n\n"
+                        f"📏 Размер: `{size_label}`\n\n"
                         f"☁️ Backup remote не настроен.\n"
                         f"Бэкап сохранён только на сервере."
                     )
@@ -673,7 +673,7 @@ def run_manual_backup(bot, cid, message_id):
                     text = (
                         f"✅ *Бэкап создан успешно!*\n\n"
                         f"📦 Файл: `{backup_name}`\n"
-                        f"📏 Размер: `{size_mb} MB`\n"
+                        f"📏 Размер: `{size_label}`\n"
                         f"☁️ Загружен на: `{BACKUP_REMOTE}:{BACKUP_ROOT_DIR}/configs/`\n"
                         f"⏱ Время создания: "
                         f"`{status.get('duration_sec', 'N/A')} секунд`\n"
@@ -684,7 +684,7 @@ def run_manual_backup(bot, cid, message_id):
                         "СОЗДАНИЕ БЭКАПА",
                         backup_name,
                         "SUCCESS",
-                        f"Размер: {size_mb} MB",
+                        f"Размер: {size_label}",
                     )
                 else:
                     stderr = (result.stderr or "").lower()
@@ -693,7 +693,7 @@ def run_manual_backup(bot, cid, message_id):
                         text = (
                             f"⚠️ *Бэкап создан локально*\n\n"
                             f"📦 Файл: `{backup_name}`\n"
-                            f"📏 Размер: `{size_mb} MB`\n\n"
+                            f"📏 Размер: `{size_label}`\n\n"
                             f"☁️ rclone не установлен.\n"
                             f"Облачная отправка пропущена."
                         )
@@ -709,7 +709,7 @@ def run_manual_backup(bot, cid, message_id):
                         text = (
                             f"⚠️ *Бэкап создан только локально*\n"
                             f"📦 Файл: `{backup_name}`\n"
-                            f"📏 Размер: `{size_mb} MB`\n"
+                            f"📏 Размер: `{size_label}`\n"
                             f"☁️ В Облако/Яндекс Диск не загружен: отсутствует токен"
                         )
                         log_action(
@@ -759,7 +759,7 @@ def run_manual_backup(bot, cid, message_id):
                         text = (
                             f"⚠️ *Бэкап создан локально*\n\n"
                             f"📦 Файл: `{backup_name}`\n"
-                            f"📏 Размер: `{size_mb} MB`\n\n"
+                            f"📏 Размер: `{size_label}`\n\n"
                             f"{reason_title}\n"
                             f"Причина: `{error}`\n\n"
                             f"Архив сохранён на сервере.\n"
