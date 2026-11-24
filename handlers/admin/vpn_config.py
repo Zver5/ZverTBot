@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from html import escape
+
 from core.access import is_admin
+from core.bot import bot as telegram_bot
+from core.navigation import navigation
 from services.vpn_config_status import (
     get_configurable_protocols,
     protocol_config_exists,
@@ -19,20 +23,27 @@ from services.vpn_server_setup import (
 )
 from ui.keyboards import (
     vpn_config_confirm_kb,
-    vpn_config_custom_cancel_kb,
     vpn_config_menu_kb,
-    vpn_config_mode_kb,
+    vpn_config_params_kb,
+    vpn_config_result_kb,
 )
+from ui.screens import (
+    ADMIN_VPN_CONFIG,
+    ADMIN_VPN_CONFIG_CONFIRM,
+    ADMIN_VPN_CONFIG_PARAMS,
+    ADMIN_VPN_CONFIG_RESULT,
+)
+from utils.helpers import safe_delete
 from utils.ttl_dict import TTLDict
 
 _DRAFTS = TTLDict(ttl=1800)
 
 
 def _protocol_name(protocol: str) -> str:
-    return {"xray": "Xray", "awg": "AmneziaWG"}.get(protocol, protocol)
+    return {"xray": "VLESS Reality", "awg": "AmneziaWG"}.get(protocol, protocol)
 
 
-def parse_custom_parameters(protocol: str, raw: str) -> dict:
+def parse_custom_parameters(protocol: str, raw: str, base_params=None) -> dict:
     """Разбирает пользовательские параметры, оставляя пропущенные defaults."""
     if protocol == "xray":
         defaults = {
@@ -46,7 +57,7 @@ def parse_custom_parameters(protocol: str, raw: str) -> dict:
     else:
         raise ValueError("Неизвестный протокол")
 
-    values = defaults.copy()
+    values = {**defaults, **(base_params or {})}
     seen = set()
 
     for line_number, line in enumerate(raw.splitlines(), 1):
@@ -142,216 +153,270 @@ def _format_summary(protocol: str, params: dict) -> str:
     return "\n".join(lines)
 
 
-def _prompt_custom_input(bot, chat_id, protocol):
-    if not is_admin(chat_id):
-        return
 
-    if protocol == "xray":
-        example = (
-            "port=8443\n"
-            "sni=example.com\n"
-            "dest=example.com:443\n"
-            "flow=vision"
+_ACTIVE_USERS = TTLDict(ttl=1800)
+_SCREEN_ERRORS = TTLDict(ttl=300)
+_SCREEN_MESSAGES = TTLDict(ttl=1800)
+_RESULTS = TTLDict(ttl=1800)
+
+
+def _active_key(chat_id):
+    user_id = _ACTIVE_USERS.get(str(chat_id))
+    if user_id is None:
+        return None
+    return _draft_key(chat_id, user_id)
+
+
+def _edit(bot, cid, message_id, text, keyboard):
+    try:
+        bot.edit_message_text(
+            text=text,
+            chat_id=cid,
+            message_id=message_id,
+            parse_mode="HTML",
+            reply_markup=keyboard,
         )
-        defaults = (
-            f"port={XRAY_DEFAULT_PORT}\n"
-            f"sni={XRAY_DEFAULT_SNI}\n"
-            f"dest={XRAY_DEFAULT_DEST}\n"
-            "flow=xtls-rprx-vision"
+    except Exception as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
+    return True
+
+
+def _parameter_text(protocol, params, error=None):
+    if protocol == "xray":
+        values = (
+            f"port={params['port']}\n"
+            f"sni={params['sni']}\n"
+            f"dest={params['dest']}\n"
+            f"flow={params['flow'] or 'none'}"
         )
         explanation = (
+            "Параметры VLESS Reality.\n"
             "SNI — доменное имя TLS.\n"
-            "Reality dest — целевой адрес в формате host:port.\n"
+            "Reality dest — адрес в формате host:port.\n"
             "Flow: vision или none."
         )
     else:
-        example = (
-            "port=51820\n"
-            "jc=5\n"
-            "jmin=30\n"
-            "jmax=80\n"
-            "s1=101\n"
-            "s2=102\n"
-            "s3=103\n"
-            "s4=104\n"
-            "h1=11\n"
-            "h2=12\n"
-            "h3=13\n"
-            "h4=14"
-        )
-        defaults = (
-            f"port={AWG_DEFAULT_PORT}\n"
-            + "\n".join(f"{k}={v}" for k, v in AWG_DEFAULT_PARAMS.items())
+        values = (
+            f"port={params['port']}\n"
+            + "\n".join(
+                f"{key}={params[key]}"
+                for key in (
+                    "jc", "jmin", "jmax", "s1", "s2", "s3", "s4",
+                    "h1", "h2", "h3", "h4",
+                )
+            )
         )
         explanation = (
-            f"Адрес сервера фиксирован: {AWG_DEFAULT_ADDRESS}.\n"
-            "Подсеть здесь не меняется."
+            "Параметры AmneziaWG.\n"
+            f"Адрес сервера фиксирован: {AWG_DEFAULT_ADDRESS}."
         )
 
-    prompt = bot.send_message(
-        chat_id,
-        (
-            f"⚙️ <b>Свои параметры — {_protocol_name(protocol)}</b>\n\n"
-            f"{explanation}\n\n"
-            "Отправь параметры по одному на строку в формате "
-            "<code>параметр=значение</code>.\n"
-            "Можно указать только изменяемые параметры. "
-            "Пропущенные или пустые будут стандартными.\n\n"
-            f"<b>Текущие значения:</b>\n<pre>{defaults}</pre>\n"
-            f"<b>Пример:</b>\n<pre>{example}</pre>\n"
-            "Для отмены отправь /cancel."
-        ),
-        parse_mode="HTML",
-        reply_markup=vpn_config_custom_cancel_kb(),
-    )
-    bot.register_next_step_handler(
-        prompt, _handle_custom_input, bot, protocol
+    error_text = f"❌ <b>{escape(error)}</b>\n\n" if error else ""
+    return (
+        f"⚙️ <b>Настройка {_protocol_name(protocol)}</b>\n\n"
+        f"{error_text}"
+        f"{explanation}\n\n"
+        "Значения ниже уже заполнены стандартными настройками.\n"
+        "Чтобы изменить параметры, отправь только нужные строки "
+        "в формате <code>параметр=значение</code>.\n"
+        "Изменения сохраняются в черновике. Можно отправлять несколько "
+        "сообщений подряд.\n\n"
+        f"<b>Текущие параметры:</b>\n<pre>{escape(values)}</pre>\n"
+        "Нажми «Далее» для проверки и подтверждения."
     )
 
 
-def _handle_custom_input(message, bot, protocol):
-    chat_id = message.chat.id
+def _render_params_screen(bot, cid, message_id):
+    key = _active_key(cid)
+    draft = _DRAFTS.get(key) if key else None
+    if not draft:
+        return _edit(
+            bot, cid, message_id,
+            "Черновик настройки истёк. Выбери протокол заново.",
+            vpn_config_menu_kb(),
+        )
+
+    _SCREEN_MESSAGES[str(cid)] = message_id
+    error = _SCREEN_ERRORS.pop(str(cid), None)
+    bot.clear_step_handler_by_chat_id(cid)
+    bot.register_next_step_handler_by_chat_id(cid, _handle_custom_input)
+
+    return _edit(
+        bot,
+        cid,
+        message_id,
+        _parameter_text(draft["protocol"], draft["params"], error),
+        vpn_config_params_kb(draft["protocol"]),
+    )
+
+
+def _render_confirm_screen(bot, cid, message_id):
+    key = _active_key(cid)
+    draft = _DRAFTS.get(key) if key else None
+    if not draft:
+        return _edit(
+            bot, cid, message_id,
+            "Черновик настройки истёк. Начни настройку заново.",
+            vpn_config_menu_kb(),
+        )
+
+    protocol = draft["protocol"]
+    replacing = draft["config_exists"]
+    warning = (
+        "\n\n⚠️ <b>ВНИМАНИЕ: конфигурация уже существует.</b>\n"
+        "Будет выполнена перенастройка с сохранением ключей, "
+        "идентификаторов и существующих клиентов."
+        if replacing else
+        "\n\nПосле подтверждения будет создан серверный конфиг."
+    )
+    return _edit(
+        bot,
+        cid,
+        message_id,
+        _format_summary(protocol, draft["params"]) + warning
+        + "\n\nПроверь параметры перед запуском настройки.",
+        vpn_config_confirm_kb(protocol, replacing=replacing),
+    )
+
+
+def _render_result_screen(bot, cid, message_id):
+    result = _RESULTS.get(str(cid))
+    if not result:
+        return _edit(
+            bot, cid, message_id,
+            "Результат настройки больше недоступен.",
+            vpn_config_result_kb(),
+        )
+    return _edit(
+        bot,
+        cid,
+        message_id,
+        result,
+        vpn_config_result_kb(),
+    )
+
+
+def _handle_custom_input(message):
+    cid = message.chat.id
     user_id = message.from_user.id
-    key = _draft_key(chat_id, user_id)
+    key = _draft_key(cid, user_id)
+    screen_message_id = _SCREEN_MESSAGES.get(str(cid))
 
-    if not is_admin(chat_id):
+    active_user_id = _ACTIVE_USERS.get(str(cid))
+    if active_user_id != user_id:
+        if active_user_id is not None and is_admin(cid):
+            telegram_bot.register_next_step_handler_by_chat_id(
+                cid, _handle_custom_input
+            )
+        return
+
+    if not is_admin(cid):
+        telegram_bot.clear_step_handler_by_chat_id(cid)
         _DRAFTS.pop(key, None)
+        _ACTIVE_USERS.pop(str(cid), None)
+        _SCREEN_MESSAGES.pop(str(cid), None)
+        return
+
+    safe_delete(telegram_bot, cid, message.message_id)
+
+    draft = _DRAFTS.get(key)
+    if not draft:
+        telegram_bot.clear_step_handler_by_chat_id(cid)
+        _SCREEN_MESSAGES.pop(str(cid), None)
         return
 
     raw = (message.text or "").strip()
     if raw.lower() in ("/cancel", "cancel", "отмена"):
+        telegram_bot.clear_step_handler_by_chat_id(cid)
+        _SCREEN_MESSAGES.pop(str(cid), None)
         _DRAFTS.pop(key, None)
-        bot.clear_step_handler_by_chat_id(chat_id)
-        bot.send_message(
-            chat_id,
-            "Настройка отменена.",
-            reply_markup=vpn_config_menu_kb(),
-        )
+        _ACTIVE_USERS.pop(str(cid), None)
+        screen_id = navigation.back(cid) or ADMIN_VPN_CONFIG
+        if screen_id == ADMIN_VPN_CONFIG:
+            navigation.start(cid, ADMIN_VPN_CONFIG)
+        navigation.render(screen_id, telegram_bot, cid, screen_message_id)
         return
 
     try:
-        params = parse_custom_parameters(protocol, raw)
+        params = parse_custom_parameters(
+            draft["protocol"],
+            raw,
+            base_params=draft["params"],
+        )
     except ValueError as exc:
-        bot.send_message(
-            chat_id,
-            f"❌ {exc}\n\nИсправь параметры и отправь сообщение ещё раз.",
-        )
-        _prompt_custom_input(bot, chat_id, protocol)
+        _SCREEN_ERRORS[str(cid)] = str(exc)
+        if screen_message_id is not None:
+            _render_params_screen(telegram_bot, cid, screen_message_id)
         return
 
-    if protocol not in get_configurable_protocols():
-        bot.send_message(
-            chat_id,
-            "Протокол не установлен или недоступен.",
-            reply_markup=vpn_config_menu_kb(),
-        )
-        return
+    draft["params"] = params
+    _DRAFTS[key] = draft
 
-    replacing = protocol_config_exists(protocol)
-    _DRAFTS[key] = {
-        "protocol": protocol,
-        "params": params,
-        "config_exists": replacing,
-    }
-    warning = (
-        "\n\n⚠️ <b>ВНИМАНИЕ: конфигурация уже существует.</b> "
-        "Будет выполнена перенастройка с сохранением ключей, "
-        "идентификаторов и существующих клиентов."
-        if replacing else
-        "\n\nПроверь параметры. Конфиг будет создан после подтверждения."
-    )
-    bot.send_message(
-        chat_id,
-        _format_summary(protocol, params) + warning,
-        parse_mode="HTML",
-        reply_markup=vpn_config_confirm_kb(protocol, replacing=replacing),
-    )
+    if screen_message_id is not None:
+        _render_params_screen(telegram_bot, cid, screen_message_id)
 
 
 def handle_vpn_config_callback(bot, cid, call, data):
-    """Обрабатывает callbacks мастера настройки VPN-конфига."""
+    """Callbacks мастера VPN-конфигурации; экраны ведёт NavigationManager."""
     if not data.startswith("vpn_config:"):
         return False
 
     if not is_admin(cid):
-        bot.answer_callback_query(call.id, "Недостаточно прав", show_alert=True)
+        bot.answer_callback_query(
+            call.id, "Недостаточно прав", show_alert=True
+        )
         return True
 
     parts = data.split(":")
     action = parts[1] if len(parts) > 1 else ""
     key = _draft_key(cid, call.from_user.id)
+    message_id = call.message.message_id
 
     if action == "protocol" and len(parts) == 3:
         protocol = parts[2]
         if protocol not in get_configurable_protocols():
             bot.answer_callback_query(
-                call.id, "Протокол не установлен или недоступен.",
-                show_alert=True,
-            )
-            return True
-
-        bot.edit_message_text(
-            f"⚙️ Настройка конфига {_protocol_name(protocol)}\n\nВыберите способ:",
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=vpn_config_mode_kb(protocol),
-        )
-        bot.answer_callback_query(call.id)
-        return True
-
-    if action in ("back", "cancel"):
-        bot.clear_step_handler_by_chat_id(cid)
-        _DRAFTS.pop(key, None)
-        text = (
-            "⚙️ Настройка серверного конфига\n\nВыберите протокол:"
-            if action == "back" else "Настройка отменена."
-        )
-        bot.edit_message_text(
-            text,
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=vpn_config_menu_kb(),
-        )
-        bot.answer_callback_query(call.id)
-        return True
-
-    if action in ("auto", "custom") and len(parts) == 3:
-        protocol = parts[2]
-        if protocol not in get_configurable_protocols():
-            bot.answer_callback_query(
-                call.id, "Протокол не установлен или недоступен.",
+                call.id,
+                "Протокол не установлен или недоступен.",
                 show_alert=True,
             )
             return True
 
         bot.clear_step_handler_by_chat_id(cid)
-        _DRAFTS.pop(key, None)
-
-        if action == "custom":
-            bot.answer_callback_query(call.id)
-            _prompt_custom_input(bot, cid, protocol)
-            return True
+        _SCREEN_MESSAGES.pop(str(cid), None)
 
         params = parse_custom_parameters(protocol, "")
-        replacing = protocol_config_exists(protocol)
         _DRAFTS[key] = {
             "protocol": protocol,
             "params": params,
-            "config_exists": replacing,
+            "config_exists": protocol_config_exists(protocol),
         }
-        warning = (
-            "\n\n⚠️ <b>ВНИМАНИЕ: конфигурация уже существует.</b> "
-            "Будет выполнена перенастройка с сохранением ключей, "
-            "идентификаторов и существующих клиентов."
-            if replacing else
-            "\n\nПроверь параметры. Конфиг будет создан после подтверждения."
+        _ACTIVE_USERS[str(cid)] = call.from_user.id
+        _SCREEN_ERRORS.pop(str(cid), None)
+
+        navigation.go(cid, ADMIN_VPN_CONFIG_PARAMS)
+        navigation.render(
+            ADMIN_VPN_CONFIG_PARAMS, bot, cid, message_id
         )
-        bot.edit_message_text(
-            _format_summary(protocol, params) + warning,
-            call.message.chat.id,
-            call.message.message_id,
-            parse_mode="HTML",
-            reply_markup=vpn_config_confirm_kb(protocol, replacing=replacing),
+        bot.answer_callback_query(call.id)
+        return True
+
+    if action == "review" and len(parts) == 3:
+        protocol = parts[2]
+        draft = _DRAFTS.get(key)
+        if not draft or draft.get("protocol") != protocol:
+            bot.answer_callback_query(
+                call.id, "Черновик не найден. Начни настройку заново.",
+                show_alert=True,
+            )
+            return True
+
+        bot.clear_step_handler_by_chat_id(cid)
+        _SCREEN_MESSAGES.pop(str(cid), None)
+        navigation.go(cid, ADMIN_VPN_CONFIG_CONFIRM)
+        navigation.render(
+            ADMIN_VPN_CONFIG_CONFIRM, bot, cid, message_id
         )
         bot.answer_callback_query(call.id)
         return True
@@ -362,37 +427,33 @@ def handle_vpn_config_callback(bot, cid, call, data):
 
         if not draft or draft.get("protocol") != protocol:
             bot.answer_callback_query(
-                call.id, "Черновик не найден или устарел. Начни настройку заново.",
+                call.id,
+                "Черновик не найден или устарел. Начни настройку заново.",
                 show_alert=True,
             )
             return True
 
         if protocol not in get_configurable_protocols():
             _DRAFTS.pop(key, None)
-            bot.edit_message_text(
-                "Протокол больше не установлен или недоступен.",
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=vpn_config_menu_kb(),
+            navigation.start(cid, ADMIN_VPN_CONFIG)
+            navigation.render(ADMIN_VPN_CONFIG, bot, cid, message_id)
+            bot.answer_callback_query(
+                call.id, "Протокол больше недоступен.", show_alert=True
             )
-            bot.answer_callback_query(call.id)
             return True
 
         if protocol_config_exists(protocol) != draft.get("config_exists"):
             _DRAFTS.pop(key, None)
-            bot.edit_message_text(
-                "Состояние конфигурации изменилось. "
-                "Начни настройку заново для повторного подтверждения.",
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=vpn_config_menu_kb(),
+            navigation.start(cid, ADMIN_VPN_CONFIG)
+            navigation.render(ADMIN_VPN_CONFIG, bot, cid, message_id)
+            bot.answer_callback_query(
+                call.id,
+                "Состояние конфигурации изменилось. Начни настройку заново.",
+                show_alert=True,
             )
-            bot.answer_callback_query(call.id)
             return True
 
-        _DRAFTS.pop(key, None)
         params = draft["params"]
-
         if protocol == "xray":
             result = setup_xray_server(**params)
         elif protocol == "awg":
@@ -403,11 +464,17 @@ def handle_vpn_config_callback(bot, cid, call, data):
             )
             return True
 
-        bot.edit_message_text(
-            f"{'✅' if result.created else 'ℹ️'} {_protocol_name(protocol)}\n\n"
-            f"{result.message}",
-            call.message.chat.id,
-            call.message.message_id,
+        _DRAFTS.pop(key, None)
+        _ACTIVE_USERS.pop(str(cid), None)
+        _RESULTS[str(cid)] = (
+            f"{'✅' if result.created else 'ℹ️'} "
+            f"<b>{_protocol_name(protocol)}</b>\n\n"
+            f"{escape(str(result.message))}"
+        )
+
+        navigation.replace(cid, ADMIN_VPN_CONFIG_RESULT)
+        navigation.render(
+            ADMIN_VPN_CONFIG_RESULT, bot, cid, message_id
         )
         bot.answer_callback_query(call.id)
         return True

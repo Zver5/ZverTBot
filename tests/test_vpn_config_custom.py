@@ -97,3 +97,41 @@ def test_awg_parser_rejects_invalid_values(raw):
 def test_parser_rejects_unknown_protocol():
     with pytest.raises(ValueError):
         parse_custom_parameters("unknown", "")
+
+
+def test_xray_parser_preserves_previous_custom_values():
+    result = parse_custom_parameters(
+        "xray",
+        "port=8443",
+        base_params={
+            "port": XRAY_DEFAULT_PORT,
+            "sni": "custom.example.com",
+            "dest": "custom.example.com:443",
+            "flow": "",
+        },
+    )
+
+    assert result == {
+        "port": 8443,
+        "sni": "custom.example.com",
+        "dest": "custom.example.com:443",
+        "flow": "",
+    }
+
+
+def test_awg_parser_preserves_previous_custom_values():
+    result = parse_custom_parameters(
+        "awg",
+        "jc=5",
+        base_params={
+            "port": 51820,
+            **AWG_DEFAULT_PARAMS,
+            "jmin": 30,
+            "jmax": 80,
+        },
+    )
+
+    assert result["port"] == 51820
+    assert result["jc"] == 5
+    assert result["jmin"] == 30
+    assert result["jmax"] == 80

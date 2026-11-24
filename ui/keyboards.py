@@ -569,25 +569,28 @@ def ai_diagnosis_menu_kb():
     return kb
 
 
+
 def vpn_config_menu_kb(protocols=None):
-    """Клавиатура выбора протокола для создания серверного конфига."""
+    """Выбор VPN-протокола: два варианта в одной строке."""
     if protocols is None:
         protocols = get_configurable_protocols()
 
-    kb = types.InlineKeyboardMarkup(row_width=1)
-
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    buttons = []
     for protocol in protocols:
         label = {
-            "xray": "⚡ Xray",
+            "xray": "⚡ VLESS",
             "awg": "🛡 AmneziaWG",
         }.get(protocol, protocol)
-
-        kb.add(
+        buttons.append(
             types.InlineKeyboardButton(
                 label,
                 callback_data=f"vpn_config:protocol:{protocol}",
             )
         )
+
+    if buttons:
+        kb.add(*buttons)
 
     kb.add(
         types.InlineKeyboardButton(
@@ -598,23 +601,19 @@ def vpn_config_menu_kb(protocols=None):
     return kb
 
 
-def vpn_config_mode_kb(protocol):
-    """Клавиатура выбора способа создания серверного конфига."""
+def vpn_config_params_kb(protocol):
+    """Клавиатура экрана редактирования параметров."""
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton(
-            "🤖 Автоматически",
-            callback_data=f"vpn_config:auto:{protocol}",
-        ),
-        types.InlineKeyboardButton(
-            "⚙️ Свои параметры",
-            callback_data=f"vpn_config:custom:{protocol}",
-        ),
+            "➡️ Далее — проверить параметры",
+            callback_data=f"vpn_config:review:{protocol}",
+        )
     )
     kb.add(
         types.InlineKeyboardButton(
             "↩️ Назад",
-            callback_data="vpn_config:back",
+            callback_data=NAV_BACK_CALLBACK,
         )
     )
     return kb
@@ -625,24 +624,27 @@ def vpn_config_confirm_kb(protocol, replacing=False):
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton(
-            "⚠️ Подтвердить перенастройку" if replacing else "✅ Создать конфиг",
+            "⚠️ Подтвердить перенастройку"
+            if replacing else "✅ Создать конфиг",
             callback_data=f"vpn_config:confirm:{protocol}",
-        ),
+        )
+    )
+    kb.add(
         types.InlineKeyboardButton(
-            "❌ Отменить",
-            callback_data="vpn_config:cancel",
-        ),
+            "↩️ Назад",
+            callback_data=NAV_BACK_CALLBACK,
+        )
     )
     return kb
 
 
-def vpn_config_custom_cancel_kb():
-    """Отмена ввода ручных параметров."""
+def vpn_config_result_kb():
+    """Клавиатура экрана результата."""
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton(
-            "❌ Отменить настройку",
-            callback_data="vpn_config:cancel",
+            "↩️ Назад",
+            callback_data=NAV_BACK_CALLBACK,
         )
     )
     return kb

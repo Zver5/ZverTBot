@@ -18,6 +18,11 @@ from handlers.admin.management import (
     render_speedtest,
 )
 from handlers.admin.navigation import _STATIC_SCREENS
+from handlers.admin.vpn_config import (
+    _render_confirm_screen,
+    _render_params_screen,
+    _render_result_screen,
+)
 from handlers.client.menu import (
     render_client_help,
     render_client_home,
@@ -50,6 +55,9 @@ from ui.screens import (
     ADMIN_CLIENTS_AWG,
     ADMIN_CLIENTS_RENAME,
     ADMIN_CLIENTS_VLESS,
+    ADMIN_VPN_CONFIG_CONFIRM,
+    ADMIN_VPN_CONFIG_PARAMS,
+    ADMIN_VPN_CONFIG_RESULT,
     BACKUP_HISTORY,
     BINDINGS_ACTIVE,
     BINDINGS_MENU,
@@ -89,6 +97,11 @@ def register_navigation_screens():
     # Admin static screens.
     for _screen_id, _renderer in _STATIC_SCREENS.items():
         navigation.register(_screen_id, _renderer)
+
+    # VPN configuration wizard.
+    navigation.register(ADMIN_VPN_CONFIG_PARAMS, _render_params_screen)
+    navigation.register(ADMIN_VPN_CONFIG_CONFIRM, _render_confirm_screen)
+    navigation.register(ADMIN_VPN_CONFIG_RESULT, _render_result_screen)
 
     # Admin client screens.
     navigation.register(ADMIN_CLIENTS_VLESS, _render_vless_screen)

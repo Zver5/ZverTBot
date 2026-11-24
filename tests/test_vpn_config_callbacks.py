@@ -1,12 +1,13 @@
 from types import SimpleNamespace
 
+import pytest
+
 import handlers.admin.vpn_config as handler
 
 
 class FakeBot:
     def __init__(self):
         self.edits = []
-        self.messages = []
         self.answers = []
         self.step_handler = None
         self.cleared = []
@@ -14,18 +15,48 @@ class FakeBot:
     def edit_message_text(self, *args, **kwargs):
         self.edits.append((args, kwargs))
 
-    def send_message(self, *args, **kwargs):
-        self.messages.append((args, kwargs))
-        return SimpleNamespace(message_id=10)
-
     def answer_callback_query(self, *args, **kwargs):
         self.answers.append((args, kwargs))
 
     def clear_step_handler_by_chat_id(self, chat_id):
         self.cleared.append(chat_id)
+        self.step_handler = None
 
-    def register_next_step_handler(self, message, callback, *args):
-        self.step_handler = (callback, args)
+    def register_next_step_handler_by_chat_id(self, chat_id, callback):
+        self.step_handler = (chat_id, callback)
+
+
+class FakeNavigation:
+    def __init__(self):
+        self.calls = []
+
+    def go(self, cid, screen):
+        self.calls.append(("go", cid, screen))
+
+    def render(self, screen, bot, cid, message_id):
+        self.calls.append(("render", screen, cid, message_id))
+
+    def start(self, cid, screen):
+        self.calls.append(("start", cid, screen))
+
+    def replace(self, cid, screen):
+        self.calls.append(("replace", cid, screen))
+
+    def back(self, cid):
+        self.calls.append(("back", cid))
+        return handler.ADMIN_VPN_CONFIG
+
+
+@pytest.fixture(autouse=True)
+def clean_state():
+    for store in (
+        handler._DRAFTS,
+        handler._ACTIVE_USERS,
+        handler._SCREEN_ERRORS,
+        handler._SCREEN_MESSAGES,
+        handler._RESULTS,
+    ):
+        store.clear()
 
 
 def make_call(chat_id=501, user_id=77):
@@ -39,86 +70,135 @@ def make_call(chat_id=501, user_id=77):
     )
 
 
-def setup_admin(monkeypatch, *, exists=False):
+def setup_admin(monkeypatch, *, exists=False, protocols=None):
     monkeypatch.setattr(handler, "is_admin", lambda _cid: True)
     monkeypatch.setattr(
-        handler, "get_configurable_protocols", lambda: ["xray", "awg"]
+        handler,
+        "get_configurable_protocols",
+        lambda: protocols or ["xray", "awg"],
     )
     monkeypatch.setattr(
         handler, "protocol_config_exists", lambda _protocol: exists
     )
 
+    nav = FakeNavigation()
+    monkeypatch.setattr(handler, "navigation", nav)
+    return nav
 
-def test_auto_requires_confirmation_before_setup(monkeypatch):
-    setup_admin(monkeypatch)
+
+def select_protocol(bot, protocol="xray"):
+    handler.handle_vpn_config_callback(
+        bot, 501, make_call(), f"vpn_config:protocol:{protocol}"
+    )
+
+
+def test_protocol_selection_creates_default_draft(monkeypatch):
+    nav = setup_admin(monkeypatch)
     bot = FakeBot()
+
     calls = []
     monkeypatch.setattr(
-        handler, "setup_xray_server",
-        lambda **params: (
-            calls.append(params)
-            or SimpleNamespace(created=True, message="created")
-        ),
+        handler, "setup_xray_server", lambda **params: calls.append(params)
     )
 
-    handler.handle_vpn_config_callback(
-        bot, 501, make_call(), "vpn_config:auto:xray"
-    )
+    select_protocol(bot)
 
+    draft = handler._DRAFTS.get(("501", "77"))
+    assert draft is not None
+    assert draft["protocol"] == "xray"
+    assert draft["params"]["port"] == handler.XRAY_DEFAULT_PORT
+    assert draft["params"]["sni"] == handler.XRAY_DEFAULT_SNI
+    assert draft["params"]["dest"] == handler.XRAY_DEFAULT_DEST
+    assert draft["config_exists"] is False
+    assert handler._ACTIVE_USERS.get("501") == 77
     assert calls == []
-    assert len(bot.edits) == 1
-    text = bot.edits[-1][0][0]
-    assert "\n" in text
-    assert "будет создан" in text.lower()
-
-    handler.handle_vpn_config_callback(
-        bot, 501, make_call(), "vpn_config:confirm:xray"
-    )
-
-    assert len(calls) == 1
-    assert calls[0]["port"] == handler.XRAY_DEFAULT_PORT
-    assert handler._DRAFTS.get(("501", "77")) is None
+    assert ("go", 501, handler.ADMIN_VPN_CONFIG_PARAMS) in nav.calls
 
 
 def test_existing_config_shows_reconfiguration_warning(monkeypatch):
     setup_admin(monkeypatch, exists=True)
     bot = FakeBot()
+
+    select_protocol(bot)
+    handler._render_confirm_screen(bot, 501, 123)
+
+    assert bot.edits
+    args, kwargs = bot.edits[-1]
+    text = args[0] if args else kwargs["text"]
+    assert "конфигурация уже существует" in text.lower()
+    assert "сохранением ключей" in text.lower()
+
+
+def test_review_moves_to_confirmation_without_setup(monkeypatch):
+    nav = setup_admin(monkeypatch)
+    bot = FakeBot()
     calls = []
+
     monkeypatch.setattr(
-        handler, "setup_xray_server",
-        lambda **params: calls.append(params),
+        handler, "setup_xray_server", lambda **params: calls.append(params)
     )
 
+    select_protocol(bot)
     handler.handle_vpn_config_callback(
-        bot, 501, make_call(), "vpn_config:auto:xray"
+        bot, 501, make_call(), "vpn_config:review:xray"
     )
 
     assert calls == []
-    text = bot.edits[-1][0][0]
-    assert "конфигурация уже существует" in text
-    assert "сохранением ключей" in text
-    assert handler._DRAFTS.get(("501", "77"))["config_exists"] is True
+    assert ("go", 501, handler.ADMIN_VPN_CONFIG_CONFIRM) in nav.calls
+    assert any(call[0] == "render" for call in nav.calls)
+
+
+def test_custom_parameters_update_draft_without_setup(monkeypatch):
+    setup_admin(monkeypatch)
+    bot = FakeBot()
+
+    monkeypatch.setattr(handler, "telegram_bot", bot)
+    monkeypatch.setattr(handler, "safe_delete", lambda *_args: None)
+
+    calls = []
+    monkeypatch.setattr(
+        handler, "setup_xray_server", lambda **params: calls.append(params)
+    )
+
+    select_protocol(bot)
+    handler._render_params_screen(bot, 501, 123)
+
+    assert bot.step_handler == (501, handler._handle_custom_input)
+
+    callback = bot.step_handler[1]
+    message = SimpleNamespace(
+        chat=SimpleNamespace(id=501),
+        from_user=SimpleNamespace(id=77),
+        message_id=456,
+        text="port=8443\nsni=example.org",
+    )
+    callback(message)
+
+    draft = handler._DRAFTS.get(("501", "77"))
+    assert draft["params"]["port"] == 8443
+    assert draft["params"]["sni"] == "example.org"
+    assert draft["params"]["dest"] == handler.XRAY_DEFAULT_DEST
+    assert calls == []
+    assert bot.step_handler == (501, handler._handle_custom_input)
 
 
 def test_confirm_aborts_if_config_state_changed(monkeypatch):
+    nav = setup_admin(monkeypatch)
     state = {"exists": False}
-    monkeypatch.setattr(handler, "is_admin", lambda _cid: True)
+
     monkeypatch.setattr(
-        handler, "get_configurable_protocols", lambda: ["xray"]
-    )
-    monkeypatch.setattr(
-        handler, "protocol_config_exists",
+        handler,
+        "protocol_config_exists",
         lambda _protocol: state["exists"],
     )
+
     bot = FakeBot()
     calls = []
     monkeypatch.setattr(
         handler, "setup_xray_server", lambda **params: calls.append(params)
     )
 
-    handler.handle_vpn_config_callback(
-        bot, 501, make_call(), "vpn_config:auto:xray"
-    )
+    select_protocol(bot)
     state["exists"] = True
 
     handler.handle_vpn_config_callback(
@@ -126,34 +206,16 @@ def test_confirm_aborts_if_config_state_changed(monkeypatch):
     )
 
     assert calls == []
-    assert "состояние конфигурации изменилось" in bot.edits[-1][0][0].lower()
     assert handler._DRAFTS.get(("501", "77")) is None
-
-
-def test_cancel_clears_draft_without_setup(monkeypatch):
-    setup_admin(monkeypatch)
-    bot = FakeBot()
-    calls = []
-    monkeypatch.setattr(
-        handler, "setup_xray_server", lambda **params: calls.append(params)
+    assert any(call[0] == "start" for call in nav.calls)
+    assert any(
+        "состояние конфигурации изменилось" in str(args).lower()
+        for args, _kwargs in bot.answers
     )
 
-    handler.handle_vpn_config_callback(
-        bot, 501, make_call(), "vpn_config:auto:xray"
-    )
-    assert handler._DRAFTS.get(("501", "77")) is not None
 
-    handler.handle_vpn_config_callback(
-        bot, 501, make_call(), "vpn_config:cancel"
-    )
-
-    assert calls == []
-    assert handler._DRAFTS.get(("501", "77")) is None
-    assert bot.cleared and all(cid == 501 for cid in bot.cleared)
-
-
-def test_custom_xray_parameters_require_confirmation(monkeypatch):
-    setup_admin(monkeypatch)
+def test_confirm_runs_setup_with_edited_parameters(monkeypatch):
+    nav = setup_admin(monkeypatch)
     bot = FakeBot()
     calls = []
 
@@ -166,27 +228,11 @@ def test_custom_xray_parameters_require_confirmation(monkeypatch):
         ),
     )
 
-    handler.handle_vpn_config_callback(
-        bot, 501, make_call(), "vpn_config:custom:xray"
-    )
-
-    assert bot.step_handler is not None
-    callback, args = bot.step_handler
-    assert callback is handler._handle_custom_input
-
-    message = SimpleNamespace(
-        chat=SimpleNamespace(id=501),
-        from_user=SimpleNamespace(id=77),
-        text="port=8443\nsni=example.org",
-    )
-    callback(message, *args)
-
-    assert calls == []
-    draft = handler._DRAFTS.get(("501", "77"))
-    assert draft is not None
-    assert draft["params"]["port"] == 8443
-    assert draft["params"]["sni"] == "example.org"
-    assert draft["params"]["dest"] == handler.XRAY_DEFAULT_DEST
+    select_protocol(bot)
+    draft = handler._DRAFTS[("501", "77")]
+    draft["params"]["port"] = 8443
+    draft["params"]["sni"] = "example.org"
+    handler._DRAFTS[("501", "77")] = draft
 
     handler.handle_vpn_config_callback(
         bot, 501, make_call(), "vpn_config:confirm:xray"
@@ -195,5 +241,31 @@ def test_custom_xray_parameters_require_confirmation(monkeypatch):
     assert len(calls) == 1
     assert calls[0]["port"] == 8443
     assert calls[0]["sni"] == "example.org"
-    assert calls[0]["dest"] == handler.XRAY_DEFAULT_DEST
     assert handler._DRAFTS.get(("501", "77")) is None
+    assert ("replace", 501, handler.ADMIN_VPN_CONFIG_RESULT) in nav.calls
+
+
+def test_unavailable_protocol_is_rejected(monkeypatch):
+    setup_admin(monkeypatch, protocols=["awg"])
+    bot = FakeBot()
+
+    handler.handle_vpn_config_callback(
+        bot, 501, make_call(), "vpn_config:protocol:xray"
+    )
+
+    assert handler._DRAFTS.get(("501", "77")) is None
+    assert bot.answers
+    assert bot.answers[-1][1].get("show_alert") is True
+
+
+def test_non_admin_cannot_start_configuration(monkeypatch):
+    monkeypatch.setattr(handler, "is_admin", lambda _cid: False)
+    bot = FakeBot()
+
+    handler.handle_vpn_config_callback(
+        bot, 501, make_call(), "vpn_config:protocol:xray"
+    )
+
+    assert handler._DRAFTS.get(("501", "77")) is None
+    assert bot.answers
+    assert bot.answers[-1][1].get("show_alert") is True
