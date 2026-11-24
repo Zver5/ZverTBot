@@ -121,7 +121,7 @@ def test_save_and_load_xray_config(tmp_path, monkeypatch):
 
     loaded = cm.load_xray_config()
 
-    assert loaded == data
+    assert loaded == cm.normalize_xray_api_config(data)
 
 
 def test_validate_xray_config_invalid_empty():
@@ -548,3 +548,66 @@ def test_get_all_clients_supports_all_xray_protocols():
         ("shadowsocks", "ss-user"),
         ("trojan", "trojan-user"),
     }
+
+
+
+def test_normalize_xray_api_config_removes_legacy_outbound_and_preserves_users():
+    config = {
+        "inbounds": [
+            {
+                "protocol": "vless",
+                "tag": "vless-in",
+                "settings": {"clients": [{"id": "uuid-preserved", "email": "user"}]},
+                "streamSettings": {
+                    "security": "reality",
+                    "realitySettings": {"privateKey": "keep-this-key"},
+                },
+            },
+            {
+                "protocol": "dokodemo-door",
+                "tag": "api",
+                "port": 10085,
+            },
+        ],
+        "outbounds": [
+            {"protocol": "freedom", "tag": "direct"},
+            {"protocol": "freedom", "tag": "api"},
+        ],
+        "routing": {
+            "rules": [
+                {"type": "field", "inboundTag": ["api"], "outboundTag": "api"},
+                {"type": "field", "domain": ["example.com"], "outboundTag": "direct"},
+            ]
+        },
+    }
+
+    normalized = cm.normalize_xray_api_config(config)
+
+    assert normalized["api"] == {
+        "tag": "api",
+        "services": ["HandlerService", "LoggerService", "StatsService"],
+    }
+    assert normalized["inbounds"][0]["settings"]["clients"][0]["id"] == "uuid-preserved"
+    reality = normalized["inbounds"][0]["streamSettings"]["realitySettings"]
+    assert reality["privateKey"] == "keep-this-key"
+    assert normalized["inbounds"][1] == {
+        "listen": "127.0.0.1",
+        "port": 10085,
+        "protocol": "dokodemo-door",
+        "settings": {"address": "127.0.0.1"},
+        "tag": "api",
+    }
+    assert [item["tag"] for item in normalized["outbounds"]] == ["direct"]
+    assert normalized["routing"]["rules"] == [
+        {"type": "field", "domain": ["example.com"], "outboundTag": "direct"},
+        {"type": "field", "inboundTag": ["api"], "outboundTag": "api"},
+    ]
+    # Нормализация не изменяет исходный объект.
+    assert "api" not in config
+    assert any(item.get("tag") == "api" for item in config["outbounds"])
+
+
+def test_normalize_xray_api_config_is_idempotent():
+    first = cm.normalize_xray_api_config(sample_config())
+    second = cm.normalize_xray_api_config(first)
+    assert second == first

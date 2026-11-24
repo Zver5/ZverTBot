@@ -66,12 +66,14 @@ def test_build_xray_config_generates_reality_config(monkeypatch):
         "tag": "api",
     }
 
-    api_outbound = next(
-        outbound
+    assert config["api"] == {
+        "tag": "api",
+        "services": ["HandlerService", "LoggerService", "StatsService"],
+    }
+    assert not any(
+        outbound.get("tag") == "api"
         for outbound in config["outbounds"]
-        if outbound.get("tag") == "api"
     )
-    assert api_outbound["protocol"] == "freedom"
 
     assert config["routing"]["rules"] == [
         {
@@ -498,3 +500,71 @@ def test_setup_awg_server_preserves_peers_when_replacing_broken_config(
     assert "PresharedKey = alice-psk" in generated
     assert "PostUp = iptables -A TEST" in generated
     assert len(list(tmp_path.glob("awg0.conf.bak-*"))) == 1
+
+
+
+def test_setup_xray_server_migrates_legacy_api_without_losing_clients(
+    monkeypatch,
+    tmp_path,
+):
+    import json
+
+    config_path = tmp_path / "config.json"
+    original = {
+        "inbounds": [
+            {
+                "protocol": "vless",
+                "tag": "vless-in",
+                "settings": {
+                    "clients": [{"id": "uuid-kept", "email": "existing-user"}]
+                },
+                "streamSettings": {
+                    "security": "reality",
+                    "realitySettings": {"privateKey": "reality-key-kept"},
+                },
+            },
+            {
+                "protocol": "dokodemo-door",
+                "tag": "api",
+                "port": 10085,
+            },
+        ],
+        "outbounds": [
+            {"protocol": "freedom", "tag": "direct"},
+            {"protocol": "freedom", "tag": "api"},
+        ],
+        "routing": {
+            "rules": [
+                {"type": "field", "inboundTag": ["api"], "outboundTag": "api"}
+            ]
+        },
+    }
+    config_path.write_text(json.dumps(original), encoding="utf-8")
+
+    monkeypatch.setattr(vpn_server_setup, "XRAY_CONF", config_path)
+    monkeypatch.setattr(xray_config_manager, "XRAY_CONF", config_path)
+    monkeypatch.setattr(vpn_server_setup, "load_xray_config", lambda: original)
+    monkeypatch.setattr(
+        vpn_server_setup,
+        "get_xray_readiness",
+        lambda config: (True, []),
+    )
+
+    def save_candidate(config):
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    monkeypatch.setattr(vpn_server_setup, "save_xray_config", save_candidate)
+
+    result = vpn_server_setup.setup_xray_server()
+
+    migrated = json.loads(config_path.read_text(encoding="utf-8"))
+    assert result.created is True
+    assert "Backup" in result.message
+    assert migrated["inbounds"][0]["settings"]["clients"][0]["id"] == "uuid-kept"
+    reality = migrated["inbounds"][0]["streamSettings"]["realitySettings"]
+    assert reality["privateKey"] == "reality-key-kept"
+    assert migrated["api"]["services"] == [
+        "HandlerService", "LoggerService", "StatsService"
+    ]
+    assert not any(item.get("tag") == "api" for item in migrated["outbounds"])
+    assert list(tmp_path.glob("config.json.bak-*"))

@@ -15,6 +15,7 @@ from services.awg.network import build_awg_network_hooks
 from services.xray.config_manager import (
     get_xray_readiness,
     load_xray_config,
+    normalize_xray_api_config,
     save_xray_config,
 )
 
@@ -94,6 +95,10 @@ def _build_xray_config(
 ) -> dict:
     """Создаёт минимальную рабочую конфигурацию VLESS Reality."""
     return {
+        "api": {
+            "tag": "api",
+            "services": ["HandlerService", "LoggerService", "StatsService"],
+        },
         "log": {"loglevel": "warning"},
         "inbounds": [
             {
@@ -135,7 +140,6 @@ def _build_xray_config(
         "outbounds": [
             {"protocol": "freedom", "tag": "direct"},
             {"protocol": "blackhole", "tag": "block"},
-            {"protocol": "freedom", "tag": "api"},
         ],
         "routing": {
             "rules": [
@@ -257,23 +261,52 @@ def setup_xray_server(
     sni: str = XRAY_DEFAULT_SNI,
     dest: str = XRAY_DEFAULT_DEST,
 ) -> SetupResult:
-    """Создаёт Xray-конфиг только если текущий конфиг нерабочий."""
+    """Создаёт или безопасно обновляет серверную конфигурацию Xray."""
     try:
         if XRAY_CONF.exists():
             try:
                 current = load_xray_config()
-                ready, _ = get_xray_readiness(current)
+                ready, problems = get_xray_readiness(current)
 
-                from services.xray.config_manager import validate_xray_config
+                if ready:
+                    normalized = normalize_xray_api_config(current)
 
-                if ready and validate_xray_config(current):
-                    return SetupResult(
-                        "xray",
-                        False,
-                        f"Рабочий Xray config уже существует: {XRAY_CONF}",
-                    )
-            except Exception:
-                pass
+                    # Старую API-схему исправляем на месте, сохраняя
+                    # пользователей, UUID, Reality, порты и остальные настройки.
+                    if normalized != current:
+                        backup = _backup_path(XRAY_CONF)
+                        try:
+                            save_xray_config(normalized)
+                        except Exception as exc:
+                            return SetupResult(
+                                "xray",
+                                False,
+                                f"Не удалось обновить Xray API: {exc}. "
+                                f"Исходный конфиг сохранён; backup: {backup}",
+                            )
+
+                        return SetupResult(
+                            "xray",
+                            True,
+                            "Конфигурация Xray API обновлена без пересоздания "
+                            f"пользователей и Reality. Backup: {backup}",
+                        )
+
+                    from services.xray.config_manager import validate_xray_config
+
+                    if validate_xray_config(current):
+                        return SetupResult(
+                            "xray",
+                            False,
+                            f"Рабочий Xray config уже существует: {XRAY_CONF}",
+                        )
+            except Exception as exc:
+                # Ошибка чтения/проверки не должна затирать существующий файл.
+                return SetupResult(
+                    "xray",
+                    False,
+                    f"Не удалось безопасно проверить существующий Xray config: {exc}",
+                )
 
             backup = _backup_path(XRAY_CONF)
         else:
@@ -282,10 +315,6 @@ def setup_xray_server(
         config = _build_xray_config(port=port, sni=sni, dest=dest)
         save_xray_config(config)
 
-        # Installer создаёт новый Xray config с 0644. Для нового файла
-        # сохраняем ту же модель доступа, чтобы Xray мог читать config
-        # независимо от пользователя systemd-службы. Для существующего
-        # файла atomic_write() сохраняет его исходные owner/group/mode.
         if backup is None:
             XRAY_CONF.chmod(0o644)
 

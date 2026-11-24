@@ -116,9 +116,19 @@ def log(msg):
         f.write(f"[{datetime.now().isoformat()}] {msg}\n")
 
 
+_XRAY_CHANNEL = None
+
+
 def query_xray_stat(name):
+    global _XRAY_CHANNEL
+
+    ch = _XRAY_CHANNEL
+    owns_channel = ch is None
+
     try:
-        ch = grpc.insecure_channel(API)
+        if owns_channel:
+            ch = grpc.insecure_channel(API)
+
         method = "/v2ray.core.app.stats.command.StatsService/QueryStats"
         req = b"\x0a" + bytes([len(name)]) + name.encode() + b"\x10\x00"
         resp = ch.unary_unary(method)(req, timeout=2)
@@ -141,6 +151,9 @@ def query_xray_stat(name):
     except Exception as e:
         logger.exception("xray_traffic.query.failed | error=%s", e)
         return None
+    finally:
+        if owns_channel and ch is not None:
+            ch.close()
 
 
 def parse_size(s):
@@ -232,53 +245,61 @@ def collect():
     except (FileNotFoundError, ValueError) as exc:
         logger.warning("xray_traffic.config.load_failed | error=%s", exc)
 
-    for u in xray_users:
-        r_up = query_xray_stat(f"user>>>{u}>>>traffic>>>uplink")
-        r_dn = query_xray_stat(f"user>>>{u}>>>traffic>>>downlink")
-        h = old_cl.get(u, {})
-        s_up = h.get("uplink", 0)
-        s_dn = h.get("downlink", 0)
-        ls_up = h.get("_snap_up", r_up if r_up is not None else 0)
-        ls_dn = h.get("_snap_down", r_dn if r_dn is not None else 0)
+    global _XRAY_CHANNEL
+    _XRAY_CHANNEL = grpc.insecure_channel(API) if xray_users else None
+    try:
+        for u in xray_users:
+            r_up = query_xray_stat(f"user>>>{u}>>>traffic>>>uplink")
+            r_dn = query_xray_stat(f"user>>>{u}>>>traffic>>>downlink")
+            h = old_cl.get(u, {})
+            s_up = h.get("uplink", 0)
+            s_dn = h.get("downlink", 0)
+            ls_up = h.get("_snap_up", r_up if r_up is not None else 0)
+            ls_dn = h.get("_snap_down", r_dn if r_dn is not None else 0)
 
-        if r_up is None:
-            d_up = 0
-            next_snap_up = ls_up
-        else:
-            d_up = r_up - ls_up if r_up >= ls_up else r_up
-            next_snap_up = r_up
+            if r_up is None:
+                d_up = 0
+                next_snap_up = ls_up
+            else:
+                d_up = r_up - ls_up if r_up >= ls_up else r_up
+                next_snap_up = r_up
 
-        if r_dn is None:
-            d_dn = 0
-            next_snap_dn = ls_dn
-        else:
-            d_dn = r_dn - ls_dn if r_dn >= ls_dn else r_dn
-            next_snap_dn = r_dn
+            if r_dn is None:
+                d_dn = 0
+                next_snap_dn = ls_dn
+            else:
+                d_dn = r_dn - ls_dn if r_dn >= ls_dn else r_dn
+                next_snap_dn = r_dn
 
-        f_up = s_up + d_up
-        f_dn = s_dn + d_dn
-        delta = d_up + d_dn
+            f_up = s_up + d_up
+            f_dn = s_dn + d_dn
+            delta = d_up + d_dn
 
-        client_data = {
-            "uplink": f_up,
-            "downlink": f_dn,
-            "total": f_up + f_dn,
-            "last_ip": xray_last_ips.get(u, h.get("last_ip", "")),
-            "_snap_up": next_snap_up,
-            "_snap_down": next_snap_dn,
-            "_delta": delta,
-            "proto": "vless",
-        }
+            client_data = {
+                "uplink": f_up,
+                "downlink": f_dn,
+                "total": f_up + f_dn,
+                "last_ip": xray_last_ips.get(u, h.get("last_ip", "")),
+                "_snap_up": next_snap_up,
+                "_snap_down": next_snap_dn,
+                "_delta": delta,
+                "proto": "vless",
+            }
 
-        # Сохраняем последнее реальное время активности Xray-клиента.
-        # При offline старое значение не затирается.
-        if delta > 100:
-            client_data["last_seen"] = ts
-        else:
-            client_data["last_seen"] = h.get("last_seen", "never")
+            # Сохраняем последнее реальное время активности Xray-клиента.
+            # При offline старое значение не затирается.
+            if delta > 100:
+                client_data["last_seen"] = ts
+            else:
+                client_data["last_seen"] = h.get("last_seen", "never")
 
-        new["clients"][u] = client_data
-        log(f"Xray {u}: raw={r_up}/{r_dn} -> total={f_up}/{f_dn}")
+            new["clients"][u] = client_data
+            log(f"Xray {u}: raw={r_up}/{r_dn} -> total={f_up}/{f_dn}")
+    finally:
+        channel = _XRAY_CHANNEL
+        _XRAY_CHANNEL = None
+        if channel is not None:
+            channel.close()
 
     awg = get_awg_raw_stats()
 

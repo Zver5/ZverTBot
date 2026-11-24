@@ -43,6 +43,79 @@ def load_xray_config() -> dict:
     return config
 
 
+def normalize_xray_api_config(config: dict) -> dict:
+    """Приводит Xray API к штатной схеме, сохраняя остальные настройки."""
+    from copy import deepcopy
+
+    if not isinstance(config, dict):
+        raise ValueError("Xray config должен быть JSON объектом")
+
+    normalized = deepcopy(config)
+    inbounds = normalized.get("inbounds")
+    if not isinstance(inbounds, list):
+        raise ValueError("Xray config: inbounds должен быть списком")
+
+    # Убираем старые/дублирующиеся API inbound и добавляем канонический.
+    normalized["inbounds"] = [
+        item for item in inbounds
+        if not (isinstance(item, dict) and item.get("tag") == "api")
+    ]
+    normalized["inbounds"].append({
+        "listen": "127.0.0.1",
+        "port": 10085,
+        "protocol": "dokodemo-door",
+        "settings": {"address": "127.0.0.1"},
+        "tag": "api",
+    })
+
+    normalized["api"] = {
+        "tag": "api",
+        "services": ["HandlerService", "LoggerService", "StatsService"],
+    }
+
+    # API outbound должен быть внутренним специальным outbound Xray,
+    # а не вручную объявленным freedom.
+    outbounds = normalized.get("outbounds")
+    if isinstance(outbounds, list):
+        normalized["outbounds"] = [
+            item for item in outbounds
+            if not (isinstance(item, dict) and item.get("tag") == "api")
+        ]
+
+    routing = normalized.get("routing")
+    if not isinstance(routing, dict):
+        routing = {}
+        normalized["routing"] = routing
+
+    rules = routing.get("rules")
+    if not isinstance(rules, list):
+        rules = []
+
+    kept_rules = []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            kept_rules.append(rule)
+            continue
+
+        inbound_tags = rule.get("inboundTag", [])
+        if isinstance(inbound_tags, str):
+            inbound_tags = [inbound_tags]
+
+        if "api" in inbound_tags or rule.get("outboundTag") == "api":
+            continue
+
+        kept_rules.append(rule)
+
+    kept_rules.append({
+        "type": "field",
+        "inboundTag": ["api"],
+        "outboundTag": "api",
+    })
+    routing["rules"] = kept_rules
+
+    return normalized
+
+
 def validate_xray_config_structure(config: dict) -> bool:
     """
     Минимальная проверка структуры Xray config
@@ -223,6 +296,11 @@ def save_xray_config(config: dict) -> None:
     Candidate сначала проходит проверку Xray.
     Рабочий config.json заменяется только после успешной проверки.
     """
+    if not validate_xray_config_structure(config):
+        raise ValueError("Некорректная структура Xray config")
+
+    config = normalize_xray_api_config(config)
+
     if not validate_xray_config_structure(config):
         raise ValueError("Некорректная структура Xray config")
 
