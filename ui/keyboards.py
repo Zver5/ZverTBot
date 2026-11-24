@@ -35,7 +35,7 @@ from core.navigation import (
     PROCESS_SEARCH_CALLBACK,
     PROCESS_TOP_CALLBACK,
 )
-from services.vpn_config_status import get_missing_config_protocols
+from services.vpn_config_status import get_configurable_protocols
 from services.xray.link_generator import xray_get_ports
 
 
@@ -66,10 +66,10 @@ def main_menu_kb():
         types.InlineKeyboardButton("💾 Бэкапы", callback_data=NAV_BACKUPS_CALLBACK),
     )
 
-    if get_missing_config_protocols():
+    if get_configurable_protocols():
         kb.add(
             types.InlineKeyboardButton(
-                "⚙️ СОЗДАТЬ КОНФИГ",
+                "⚙️ НАСТРОЙКА VPN",
                 callback_data=NAV_VPN_CONFIG_CALLBACK,
             )
         )
@@ -572,7 +572,7 @@ def ai_diagnosis_menu_kb():
 def vpn_config_menu_kb(protocols=None):
     """Клавиатура выбора протокола для создания серверного конфига."""
     if protocols is None:
-        protocols = get_missing_config_protocols()
+        protocols = get_configurable_protocols()
 
     kb = types.InlineKeyboardMarkup(row_width=1)
 
@@ -615,6 +615,34 @@ def vpn_config_mode_kb(protocol):
         types.InlineKeyboardButton(
             "↩️ Назад",
             callback_data="vpn_config:back",
+        )
+    )
+    return kb
+
+
+def vpn_config_confirm_kb(protocol, replacing=False):
+    """Подтверждение создания или перенастройки VPN-конфигурации."""
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        types.InlineKeyboardButton(
+            "⚠️ Подтвердить перенастройку" if replacing else "✅ Создать конфиг",
+            callback_data=f"vpn_config:confirm:{protocol}",
+        ),
+        types.InlineKeyboardButton(
+            "❌ Отменить",
+            callback_data="vpn_config:cancel",
+        ),
+    )
+    return kb
+
+
+def vpn_config_custom_cancel_kb():
+    """Отмена ввода ручных параметров."""
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        types.InlineKeyboardButton(
+            "❌ Отменить настройку",
+            callback_data="vpn_config:cancel",
         )
     )
     return kb

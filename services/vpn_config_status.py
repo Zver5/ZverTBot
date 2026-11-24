@@ -119,6 +119,40 @@ def get_missing_config_protocols() -> list[str]:
     ]
 
 
+def get_initial_setup_protocols() -> list[str]:
+    """Возвращает установленные протоколы, для которых конфиг ещё не создавался."""
+    statuses = get_vpn_config_status()
+    config_paths = {
+        "xray": XRAY_CONF,
+        "awg": AWG_CONF,
+    }
+    return [
+        protocol
+        for protocol, status in statuses.items()
+        if (
+            status.installed
+            and not config_paths[protocol].exists()
+            and not config_paths[protocol].is_symlink()
+        )
+    ]
+
+
+def get_configurable_protocols() -> list[str]:
+    """Возвращает все установленные протоколы независимо от наличия конфига."""
+    return [
+        protocol
+        for protocol, status in get_vpn_config_status().items()
+        if status.installed
+    ]
+
+
+def protocol_config_exists(protocol: str) -> bool:
+    """Проверяет наличие конфига, включая битую символьную ссылку."""
+    paths = {"xray": XRAY_CONF, "awg": AWG_CONF}
+    path = paths.get(protocol)
+    return bool(path and (path.exists() or path.is_symlink()))
+
+
 def has_missing_vpn_config() -> bool:
-    """Нужно ли показывать кнопку создания конфига."""
+    """Нужно ли показывать кнопку настройки VPN."""
     return bool(get_missing_config_protocols())
