@@ -492,26 +492,30 @@ install_xray() {
 
     mkdir -p "$XRAY_LOG_DROPIN_DIR"
 
-    cat > "$XRAY_LOG_DROPIN" <<'EOF'
+    XRAY_RESTART_REQUIRED=false
+
+    if [ ! -f "$XRAY_LOG_DROPIN" ] || ! grep -qxF 'LogsDirectory=xray' "$XRAY_LOG_DROPIN" || ! grep -qxF 'LogsDirectoryMode=0700' "$XRAY_LOG_DROPIN"; then
+        cat > "$XRAY_LOG_DROPIN" <<'EOF'
 [Service]
 LogsDirectory=xray
 LogsDirectoryMode=0700
 EOF
+        XRAY_RESTART_REQUIRED=true
+    fi
 
     XRAY_DROPIN_DIR="/etc/systemd/system/xray.service.d"
     XRAY_DROPIN="${XRAY_DROPIN_DIR}/99-zvertbot-nofile.conf"
 
-    cat > "$XRAY_DROPIN" <<'EOF'
+    if [ ! -f "$XRAY_DROPIN" ] || ! grep -qxF 'LimitNOFILE=65535' "$XRAY_DROPIN"; then
+        cat > "$XRAY_DROPIN" <<'EOF'
 [Service]
 LimitNOFILE=65535
 EOF
+        XRAY_RESTART_REQUIRED=true
+    fi
 
-    systemctl daemon-reload
-
-    if systemctl is-active --quiet xray.service; then
-        if ! systemctl restart xray.service; then
-            fail "Failed to restart Xray after applying LimitNOFILE"
-        fi
+    if [ "$XRAY_RESTART_REQUIRED" = true ]; then
+        systemctl daemon-reload
     fi
 
     if [ "$(systemctl show xray.service -p LimitNOFILE --value 2>/dev/null)" = "65535" ]; then
@@ -1581,6 +1585,14 @@ create_env
 enable_ip_forwarding
 create_runtime_files
 create_venv
+
+if [ "$INSTALL_XRAY" = true ]; then
+    if [ "$XRAY_RESTART_REQUIRED" = true ]; then
+        .venv/bin/python scripts/migrate_xray_telemetry.py --restart
+    else
+        .venv/bin/python scripts/migrate_xray_telemetry.py
+    fi
+fi
 
 create_service
 

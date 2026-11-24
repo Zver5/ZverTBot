@@ -154,3 +154,24 @@ def test_xray_access_log_permissions_are_managed_by_installer():
 
     assert 'verify_value "Xray log directory permissions"' in function
     assert 'verify_value "Xray access log permissions"' in function
+
+
+def test_xray_telemetry_migration_runs_only_when_xray_requested():
+    start = INSTALL.index(
+        'if [ "$INSTALL_XRAY" = true ]; then\n'
+        '    if [ "$XRAY_RESTART_REQUIRED" = true ]; then'
+    )
+    end = INSTALL.index("\nfi", start) + 3
+    block = INSTALL[start:end]
+
+    assert "scripts/migrate_xray_telemetry.py --restart" in block
+    assert "scripts/migrate_xray_telemetry.py" in block
+    assert block.count('if [ "$INSTALL_XRAY" = true ]; then') == 1
+
+
+def test_xray_telemetry_migration_runs_after_venv_creation():
+    venv_pos = INSTALL.index("create_venv\n", INSTALL.index("enable_ip_forwarding\n"))
+    migration_pos = INSTALL.index("scripts/migrate_xray_telemetry.py")
+    service_pos = INSTALL.index("\ncreate_service\n", migration_pos)
+
+    assert venv_pos < migration_pos < service_pos
