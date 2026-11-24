@@ -333,27 +333,17 @@ if [ -e /etc/sysctl.conf ]; then
 fi
 
 
-# Fail2ban — custom protection configuration.
+# Fail2ban — сохраняем фактическую конфигурацию целиком.
 
 if [ -d /etc/fail2ban ]; then
-    FAIL2BAN_BACKUP_FILES=(
-        /etc/fail2ban/jail.local
-        /etc/fail2ban/filter.d/sshd-aggressive.conf
-    )
+    if ! cp -a --parents /etc/fail2ban "${TEMP_DIR}/"; then
+        log_error "backup.fail2ban.copy_failed | path=/etc/fail2ban"
+        write_failed_status 1 "Failed to copy Fail2ban configuration" || true
+        exit 1
+    fi
 
-    for FILE in "${FAIL2BAN_BACKUP_FILES[@]}"; do
-        if [ ! -f "$FILE" ]; then
-            log_error "backup.fail2ban.file_missing | path=${FILE}"
-            exit 1
-        fi
-
-        if ! cp -p --parents "$FILE" "${TEMP_DIR}/"; then
-            log_error "backup.fail2ban.copy_failed | path=${FILE}"
-            exit 1
-        fi
-    done
-
-    log_info "backup.fail2ban.completed | files=${#FAIL2BAN_BACKUP_FILES[@]}"
+    FAIL2BAN_FILE_COUNT=$(find /etc/fail2ban -type f | wc -l)
+    log_info "backup.fail2ban.completed | files=${FAIL2BAN_FILE_COUNT}"
 else
     log_warn "backup.fail2ban.not_installed | skipped"
 fi
