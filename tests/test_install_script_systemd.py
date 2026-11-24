@@ -135,3 +135,22 @@ def test_install_script_reports_sysctl_apply_failure():
     assert "if ! sysctl -p >/dev/null 2>&1; then" in enable_ip_forwarding
     assert 'warn "Failed to apply sysctl configuration"' in enable_ip_forwarding
     assert "|| true" not in enable_ip_forwarding
+
+
+def test_xray_access_log_permissions_are_managed_by_installer():
+    start = INSTALL.index("install_xray()")
+    end = INSTALL.index("\n}\n", start) + 3
+    function = INSTALL[start:end]
+
+    assert 'XRAY_LOG_DIR="/var/log/xray"' in function
+    assert 'install -d -o xray -g xray -m 0700 "$XRAY_LOG_DIR"' in function
+    assert 'chown xray:xray "$XRAY_ACCESS_LOG"' in function
+    assert 'chmod 600 "$XRAY_ACCESS_LOG"' in function
+    assert 'if [ -L "$XRAY_ACCESS_LOG" ]; then' in function
+    assert 'LogsDirectory=xray' in function
+    assert 'LogsDirectoryMode=0700' in function
+    assert '98-zvertbot-logs.conf' in function
+    assert 'systemctl daemon-reload' in function
+
+    assert 'verify_value "Xray log directory permissions"' in function
+    assert 'verify_value "Xray access log permissions"' in function

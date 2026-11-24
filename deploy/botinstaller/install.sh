@@ -465,10 +465,41 @@ install_xray() {
         ok "Empty Xray config replaced with example: $XRAY_DEFAULT_CONF"
     fi
 
+    if ! id xray >/dev/null 2>&1; then
+        fail "Xray service user xray does not exist"
+    fi
+
+    XRAY_LOG_DIR="/var/log/xray"
+    XRAY_ACCESS_LOG="${XRAY_LOG_DIR}/access.log"
+    XRAY_LOG_DROPIN_DIR="/etc/systemd/system/xray.service.d"
+    XRAY_LOG_DROPIN="${XRAY_LOG_DROPIN_DIR}/98-zvertbot-logs.conf"
+
+    if [ -L "$XRAY_LOG_DIR" ]; then
+        fail "Xray log directory must not be a symlink"
+    fi
+
+    install -d -o xray -g xray -m 0700 "$XRAY_LOG_DIR"
+
+    if [ -L "$XRAY_ACCESS_LOG" ]; then
+        fail "Xray access log must not be a symlink"
+    elif [ -e "$XRAY_ACCESS_LOG" ]; then
+        if [ ! -f "$XRAY_ACCESS_LOG" ]; then
+            fail "Xray access log is not a regular file"
+        fi
+        chown xray:xray "$XRAY_ACCESS_LOG"
+        chmod 600 "$XRAY_ACCESS_LOG"
+    fi
+
+    mkdir -p "$XRAY_LOG_DROPIN_DIR"
+
+    cat > "$XRAY_LOG_DROPIN" <<'EOF'
+[Service]
+LogsDirectory=xray
+LogsDirectoryMode=0700
+EOF
+
     XRAY_DROPIN_DIR="/etc/systemd/system/xray.service.d"
     XRAY_DROPIN="${XRAY_DROPIN_DIR}/99-zvertbot-nofile.conf"
-
-    mkdir -p "$XRAY_DROPIN_DIR"
 
     cat > "$XRAY_DROPIN" <<'EOF'
 [Service]
@@ -487,6 +518,16 @@ EOF
         ok "Xray LimitNOFILE=65535"
     else
         warn "Xray LimitNOFILE could not be verified"
+    fi
+
+    XRAY_LOG_DIR_STATE="$(stat -c '%U:%G:%a' /var/log/xray 2>/dev/null || true)"
+    verify_value "Xray log directory permissions" "$XRAY_LOG_DIR_STATE" "xray:xray:700"
+
+    if [ -f /var/log/xray/access.log ]; then
+        XRAY_ACCESS_LOG_STATE="$(stat -c '%U:%G:%a' /var/log/xray/access.log)"
+        verify_value "Xray access log permissions" "$XRAY_ACCESS_LOG_STATE" "xray:xray:600"
+    else
+        verify_info "Xray access log" "will be created by Xray with UMask=0077"
     fi
 }
 

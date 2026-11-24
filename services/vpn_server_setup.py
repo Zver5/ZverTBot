@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from config.paths import AWG_CONF, XRAY_CONF
+from config.paths import AWG_CONF, XRAY_ACCESS_LOG, XRAY_CONF
 from services.awg.config_manager import get_awg_readiness
 from services.awg.network import build_awg_network_hooks
 from services.xray.config_manager import (
@@ -99,7 +99,19 @@ def _build_xray_config(
             "tag": "api",
             "services": ["HandlerService", "LoggerService", "StatsService"],
         },
-        "log": {"loglevel": "warning"},
+        "log": {
+            "access": str(XRAY_ACCESS_LOG),
+            "loglevel": "warning",
+        },
+        "stats": {},
+        "policy": {
+            "levels": {
+                "0": {
+                    "statsUserUplink": True,
+                    "statsUserDownlink": True,
+                }
+            }
+        },
         "inbounds": [
             {
                 "listen": "0.0.0.0",

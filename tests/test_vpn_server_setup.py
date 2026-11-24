@@ -70,6 +70,12 @@ def test_build_xray_config_generates_reality_config(monkeypatch):
         "tag": "api",
         "services": ["HandlerService", "LoggerService", "StatsService"],
     }
+    assert config["log"]["access"] == str(vpn_server_setup.XRAY_ACCESS_LOG)
+    assert config["stats"] == {}
+    assert config["policy"]["levels"]["0"] == {
+        "statsUserUplink": True,
+        "statsUserDownlink": True,
+    }
     assert not any(
         outbound.get("tag") == "api"
         for outbound in config["outbounds"]

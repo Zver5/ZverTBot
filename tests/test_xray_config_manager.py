@@ -607,6 +607,54 @@ def test_normalize_xray_api_config_removes_legacy_outbound_and_preserves_users()
     assert any(item.get("tag") == "api" for item in config["outbounds"])
 
 
+def test_normalize_xray_config_enables_user_stats_and_access_log(
+    monkeypatch, tmp_path
+):
+    access_log = tmp_path / "xray-access.log"
+    monkeypatch.setattr(cm, "XRAY_ACCESS_LOG", access_log)
+
+    config = sample_config()
+    config["inbounds"][0]["settings"]["clients"][0]["level"] = 3
+    config["policy"] = {
+        "levels": {"3": {"handshake": 10}},
+        "system": {"statsInboundUplink": True},
+    }
+    config["log"] = {
+        "loglevel": "info",
+        "error": "/tmp/xray-error.log",
+    }
+
+    normalized = cm.normalize_xray_api_config(config)
+
+    assert normalized["stats"] == {}
+    assert normalized["policy"]["levels"]["3"] == {
+        "handshake": 10,
+        "statsUserUplink": True,
+        "statsUserDownlink": True,
+    }
+    assert normalized["policy"]["system"] == {"statsInboundUplink": True}
+    assert normalized["log"] == {
+        "access": str(access_log),
+        "loglevel": "info",
+        "error": "/tmp/xray-error.log",
+    }
+    assert "stats" not in config
+    assert "access" not in config["log"]
+
+
+def test_normalize_xray_config_adds_default_level_when_no_vless_clients():
+    config = {
+        "inbounds": [
+            {"protocol": "vless", "settings": {"clients": []}}
+        ]
+    }
+
+    normalized = cm.normalize_xray_api_config(config)
+
+    assert normalized["policy"]["levels"]["0"]["statsUserUplink"] is True
+    assert normalized["policy"]["levels"]["0"]["statsUserDownlink"] is True
+
+
 def test_normalize_xray_api_config_is_idempotent():
     first = cm.normalize_xray_api_config(sample_config())
     second = cm.normalize_xray_api_config(first)

@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from config.paths import XRAY_CONF
+from config.paths import XRAY_ACCESS_LOG, XRAY_CONF
 from utils.atomic import atomic_write
 from utils.client_operation_lock import client_operation_lock
 from utils.logger import logger
@@ -112,6 +112,50 @@ def normalize_xray_api_config(config: dict) -> dict:
         "outboundTag": "api",
     })
     routing["rules"] = kept_rules
+
+    # Включаем пользовательскую статистику для уровней VLESS-клиентов.
+    if not isinstance(normalized.get("stats"), dict):
+        normalized["stats"] = {}
+
+    policy = normalized.get("policy")
+    if not isinstance(policy, dict):
+        policy = {}
+        normalized["policy"] = policy
+
+    levels = policy.get("levels")
+    if not isinstance(levels, dict):
+        levels = {}
+        policy["levels"] = levels
+
+    client_levels = set()
+    for inbound in normalized["inbounds"]:
+        if not isinstance(inbound, dict) or inbound.get("protocol") != "vless":
+            continue
+        settings = inbound.get("settings")
+        if not isinstance(settings, dict):
+            continue
+        clients = settings.get("clients")
+        if not isinstance(clients, list):
+            continue
+        for client in clients:
+            if isinstance(client, dict):
+                client_levels.add(str(client.get("level", 0)))
+
+    for level in client_levels or {"0"}:
+        level_policy = levels.get(level)
+        if not isinstance(level_policy, dict):
+            level_policy = {}
+            levels[level] = level_policy
+        level_policy["statsUserUplink"] = True
+        level_policy["statsUserDownlink"] = True
+
+    # Путь совпадает с тем, который используют сборщики ZverTBot.
+    log_config = normalized.get("log")
+    if not isinstance(log_config, dict):
+        log_config = {}
+        normalized["log"] = log_config
+    log_config["access"] = str(XRAY_ACCESS_LOG)
+    log_config.setdefault("loglevel", "warning")
 
     return normalized
 
