@@ -524,25 +524,14 @@ def _validate_awg_candidate(content: str) -> None:
     if not ready:
         raise ValueError("AWG config не прошёл проверку: " + "; ".join(problems))
 
-    temp_path = None
-    try:
-        AWG_CONF.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=str(AWG_CONF.parent),
-            prefix="awg0.validate.",
-            suffix=".conf",
-            delete=False,
-        ) as temp:
-            temp.write(content)
-            temp.flush()
-            temp_path = temp.name
-
-        _run_command("awg-quick", "strip", temp_path, timeout=10)
-    finally:
-        if temp_path:
-            Path(temp_path).unlink(missing_ok=True)
+    AWG_CONF.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix="awg0.validate.",
+        dir=str(AWG_CONF.parent),
+    ) as temp_dir:
+        temp_path = Path(temp_dir) / "awg0.conf"
+        temp_path.write_text(content, encoding="utf-8")
+        _run_command("awg-quick", "strip", str(temp_path), timeout=10)
 
 
 def _backup_path(path: Path) -> Path:

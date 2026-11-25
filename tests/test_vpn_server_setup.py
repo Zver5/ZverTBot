@@ -917,3 +917,66 @@ AllowedIPs = 10.66.66.2/32
     assert "PostDown = second cleanup" in result
     assert "ListenPort = 58350" in result
     assert "Jc = 4" in result
+
+
+def test_validate_awg_candidate_uses_valid_interface_filename(
+    tmp_path, monkeypatch
+):
+    from pathlib import Path
+
+    monkeypatch.setattr(
+        vpn_server_setup, "AWG_CONF", tmp_path / "awg0.conf"
+    )
+    monkeypatch.setattr(
+        vpn_server_setup, "get_awg_readiness",
+        lambda _content: (True, []),
+    )
+
+    temp_dirs = []
+
+    def fake_run_command(*args, **kwargs):
+        path = Path(args[2])
+        temp_dirs.append(path.parent)
+        assert path.name == "awg0.conf"
+        assert path.read_text(encoding="utf-8") == "test config"
+
+    monkeypatch.setattr(vpn_server_setup, "_run_command", fake_run_command)
+
+    vpn_server_setup._validate_awg_candidate("test config")
+
+    assert len(temp_dirs) == 1
+    assert not temp_dirs[0].exists()
+
+
+def test_validate_awg_candidate_cleans_temp_directory_on_error(
+    tmp_path, monkeypatch
+):
+    from pathlib import Path
+
+    monkeypatch.setattr(
+        vpn_server_setup, "AWG_CONF", tmp_path / "awg0.conf"
+    )
+    monkeypatch.setattr(
+        vpn_server_setup, "get_awg_readiness",
+        lambda _content: (True, []),
+    )
+
+    temp_dirs = []
+
+    def fail_command(*args, **kwargs):
+        path = Path(args[2])
+        temp_dirs.append(path.parent)
+        assert path.name == "awg0.conf"
+        raise RuntimeError("validation failed")
+
+    monkeypatch.setattr(vpn_server_setup, "_run_command", fail_command)
+
+    try:
+        vpn_server_setup._validate_awg_candidate("test config")
+    except RuntimeError as exc:
+        assert "validation failed" in str(exc)
+    else:
+        raise AssertionError("Ожидалась ошибка проверки AWG")
+
+    assert len(temp_dirs) == 1
+    assert not temp_dirs[0].exists()
