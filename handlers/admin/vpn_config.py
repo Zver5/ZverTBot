@@ -7,6 +7,7 @@ from html import escape
 from core.access import is_admin
 from core.bot import bot as telegram_bot
 from core.navigation import navigation
+from services.awg.config_manager import get_awg_interface_params
 from services.vpn_config_status import (
     get_configurable_protocols,
     protocol_config_exists,
@@ -125,6 +126,30 @@ def parse_custom_parameters(protocol: str, raw: str, base_params=None) -> dict:
             raise ValueError("Jmin не может быть больше Jmax")
 
     return values
+
+
+def _initial_protocol_params(protocol: str, config_exists: bool) -> dict:
+    """Загружает активные параметры протокола для нового черновика."""
+    if protocol != "awg" or not config_exists:
+        return parse_custom_parameters(protocol, "")
+
+    fields = get_awg_interface_params()
+    defaults = {"port": AWG_DEFAULT_PORT, **AWG_DEFAULT_PARAMS}
+
+    try:
+        base_params = {
+            "port": int(fields.get("listenport", defaults["port"])),
+            **{
+                key: int(fields.get(key, default))
+                for key, default in AWG_DEFAULT_PARAMS.items()
+            },
+        }
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "В существующем AWG-конфиге обнаружены некорректные параметры."
+        ) from exc
+
+    return parse_custom_parameters("awg", "", base_params=base_params)
 
 
 def _draft_key(chat_id, user_id):
@@ -386,11 +411,21 @@ def handle_vpn_config_callback(bot, cid, call, data):
         bot.clear_step_handler_by_chat_id(cid)
         _SCREEN_MESSAGES.pop(str(cid), None)
 
-        params = parse_custom_parameters(protocol, "")
+        config_exists = protocol_config_exists(protocol)
+        try:
+            params = _initial_protocol_params(protocol, config_exists)
+        except (OSError, ValueError) as exc:
+            bot.answer_callback_query(
+                call.id,
+                f"Не удалось загрузить параметры: {exc}",
+                show_alert=True,
+            )
+            return True
+
         _DRAFTS[key] = {
             "protocol": protocol,
             "params": params,
-            "config_exists": protocol_config_exists(protocol),
+            "config_exists": config_exists,
         }
         _ACTIVE_USERS[str(cid)] = call.from_user.id
         _SCREEN_ERRORS.pop(str(cid), None)

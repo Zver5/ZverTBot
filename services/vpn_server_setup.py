@@ -16,7 +16,10 @@ from services.awg.config_manager import (
     parse_awg_interface,
     save_awg_config,
 )
-from services.awg.network import build_awg_network_hooks
+from services.awg.network import (
+    build_awg_input_firewall_hooks,
+    build_awg_network_hooks,
+)
 from services.xray.config_manager import (
     get_xray_readiness,
     load_xray_config,
@@ -321,6 +324,10 @@ def _build_awg_config(
             for command in network_hooks.post_down
         )
 
+    input_up, input_down = build_awg_input_firewall_hooks(port)
+    lines.extend(f"PostUp = {command}" for command in input_up)
+    lines.extend(f"PostDown = {command}" for command in input_down)
+
     if peer_blocks:
         lines.append("")
         lines.extend(block.rstrip("\n") for block in peer_blocks)
@@ -442,6 +449,11 @@ def _modify_awg_config(
 ) -> str:
     """Обновляет только поддерживаемые параметры [Interface]."""
     fields = _strict_awg_interface_fields(current)
+    try:
+        previous_port = int(fields["listenport"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("В существующем AWG config некорректный ListenPort") from exc
+
     if not fields.get("privatekey"):
         raise ValueError("В существующем AWG config отсутствует PrivateKey")
     if not fields.get("address"):
@@ -515,6 +527,31 @@ def _modify_awg_config(
     new_fields = parse_awg_interface(candidate)
     if new_fields.get("address") != original_address:
         raise ValueError("Перенастройка не должна менять Address AWG")
+
+    input_up, input_down = build_awg_input_firewall_hooks(
+        listen_port=port,
+        previous_listen_port=previous_port,
+    )
+    lines = [
+        line for line in candidate.splitlines()
+        if "ZverTBot-AWG-INPUT" not in line
+    ]
+
+    peer_index = next(
+        (
+            index for index, line in enumerate(lines)
+            if line.strip().lower() == "[peer]"
+        ),
+        len(lines),
+    )
+    hooks = (
+        [f"PostUp = {command}" for command in input_up]
+        + [f"PostDown = {command}" for command in input_down]
+    )
+    if peer_index and lines[peer_index - 1].strip():
+        hooks.insert(0, "")
+    lines[peer_index:peer_index] = hooks
+    candidate = "\n".join(lines).rstrip() + "\n"
 
     return candidate
 

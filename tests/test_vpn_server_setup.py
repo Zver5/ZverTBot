@@ -909,8 +909,12 @@ AllowedIPs = 10.66.66.2/32
         content, port=58350, params={"jc": 4}
     )
 
-    assert result.count("PostUp =") == 2
-    assert result.count("PostDown =") == 2
+    assert "PostUp = first rule" in result
+    assert "PostUp = second rule" in result
+    assert "PostDown = first cleanup" in result
+    assert "PostDown = second cleanup" in result
+    assert result.count("PostUp =") == 3
+    assert result.count("PostDown =") == 4
     assert "PostUp = first rule" in result
     assert "PostUp = second rule" in result
     assert "PostDown = first cleanup" in result
@@ -980,3 +984,72 @@ def test_validate_awg_candidate_cleans_temp_directory_on_error(
 
     assert len(temp_dirs) == 1
     assert not temp_dirs[0].exists()
+
+
+def test_build_awg_input_firewall_hooks():
+    post_up, post_down = awg_network.build_awg_input_firewall_hooks(
+        listen_port=58354,
+        previous_listen_port=58352,
+    )
+
+    assert len(post_up) == 1
+    assert "--dport 58354" in post_up[0]
+    assert "iptables -C INPUT" in post_up[0]
+    assert "iptables -I INPUT" in post_up[0]
+    assert "ZverTBot-AWG-INPUT" in post_up[0]
+
+    assert len(post_down) == 2
+    assert any("--dport 58352" in command for command in post_down)
+    assert any("--dport 58354" in command for command in post_down)
+    assert all("iptables -D INPUT" in command for command in post_down)
+
+
+def test_build_awg_input_firewall_hooks_rejects_invalid_port():
+    import pytest
+
+    for port in (0, 65536, -1, True):
+        with pytest.raises(ValueError, match="UDP-порт AWG"):
+            awg_network.build_awg_input_firewall_hooks(port)
+
+
+def test_awg_reconfigure_updates_managed_input_hooks_and_preserves_custom():
+    original = (
+        "[Interface]\n"
+        "PrivateKey = preserved-server-key\n"
+        "Address = 10.66.66.1/24\n"
+        "ListenPort = 58352\n"
+        "Jc = 4\nJmin = 40\nJmax = 70\n"
+        "S1 = 117\nS2 = 74\nS3 = 63\nS4 = 82\n"
+        "H1 = 1\nH2 = 2\nH3 = 3\nH4 = 4\n"
+        "PostUp = iptables -A CUSTOM\n"
+        "PostDown = iptables -D CUSTOM\n"
+        "\n[Peer]\n"
+        "PublicKey = preserved-peer\n"
+        "AllowedIPs = 10.66.66.8/32\n"
+    )
+
+    updated = vpn_server_setup._modify_awg_config(
+        original,
+        port=58354,
+        params={"jc": 6},
+    )
+
+    assert "ListenPort = 58354" in updated
+    assert "PostUp = iptables -A CUSTOM" in updated
+    assert "PostDown = iptables -D CUSTOM" in updated
+    assert "PublicKey = preserved-peer" in updated
+
+    assert "PostUp = iptables -C INPUT -p udp --dport 58354" in updated
+    assert "--dport 58352" in updated
+    assert "ZverTBot-AWG-INPUT" in updated
+
+    # Повторная перенастройка не должна накапливать старые managed hooks.
+    updated_again = vpn_server_setup._modify_awg_config(
+        updated,
+        port=58355,
+        params={"jc": 7},
+    )
+    assert updated_again.count("ZverTBot-AWG-INPUT") == 6
+    assert "--dport 58352" not in updated_again
+    assert "--dport 58354" in updated_again
+    assert "--dport 58355" in updated_again

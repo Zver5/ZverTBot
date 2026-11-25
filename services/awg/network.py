@@ -115,3 +115,40 @@ def build_awg_network_hooks(
         post_up=post_up,
         post_down=post_down,
     )
+
+
+
+def build_awg_input_firewall_hooks(
+    listen_port: int,
+    previous_listen_port: int | None = None,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Строит PostUp/PostDown для входящего UDP-порта AWG."""
+    ports = {listen_port}
+    if previous_listen_port is not None:
+        ports.add(previous_listen_port)
+
+    if any(
+        isinstance(port, bool) or not isinstance(port, int)
+        or not 1 <= port <= 65535
+        for port in ports
+    ):
+        raise ValueError("Некорректный UDP-порт AWG")
+
+    marker = "ZverTBot-AWG-INPUT"
+
+    post_up = (
+        "iptables -C INPUT -p udp --dport "
+        f"{listen_port} -m comment --comment {marker} -j ACCEPT || "
+        "iptables -I INPUT -p udp --dport "
+        f"{listen_port} -m comment --comment {marker} -j ACCEPT",
+    )
+
+    post_down = tuple(
+        "while iptables -C INPUT -p udp --dport "
+        f"{port} -m comment --comment {marker} -j ACCEPT; do "
+        "iptables -D INPUT -p udp --dport "
+        f"{port} -m comment --comment {marker} -j ACCEPT; done"
+        for port in sorted(ports)
+    )
+
+    return post_up, post_down

@@ -115,6 +115,65 @@ def test_protocol_selection_creates_default_draft(monkeypatch):
     assert ("go", 501, handler.ADMIN_VPN_CONFIG_PARAMS) in nav.calls
 
 
+def test_awg_selection_loads_existing_interface_parameters(monkeypatch):
+    setup_admin(monkeypatch, exists=True)
+    bot = FakeBot()
+
+    monkeypatch.setattr(
+        handler,
+        "get_awg_interface_params",
+        lambda: {
+            "listenport": "49152",
+            "jc": "7",
+            "jmin": "25",
+            "jmax": "85",
+            "s1": "111",
+            "s2": "222",
+            "s3": "333",
+            "s4": "444",
+            "h1": "11",
+            "h2": "22",
+            "h3": "33",
+            "h4": "44",
+        },
+    )
+
+    select_protocol(bot, "awg")
+
+    draft = handler._DRAFTS.get(("501", "77"))
+    assert draft["config_exists"] is True
+    assert draft["params"] == {
+        "port": 49152,
+        "jc": 7,
+        "jmin": 25,
+        "jmax": 85,
+        "s1": 111,
+        "s2": 222,
+        "s3": 333,
+        "s4": 444,
+        "h1": 11,
+        "h2": 22,
+        "h3": 33,
+        "h4": 44,
+    }
+
+
+def test_awg_selection_uses_defaults_without_existing_config(monkeypatch):
+    setup_admin(monkeypatch, exists=False)
+    bot = FakeBot()
+
+    def unexpected_read():
+        raise AssertionError("Конфиг не должен читаться")
+
+    monkeypatch.setattr(handler, "get_awg_interface_params", unexpected_read)
+
+    select_protocol(bot, "awg")
+
+    draft = handler._DRAFTS.get(("501", "77"))
+    assert draft["params"]["port"] == handler.AWG_DEFAULT_PORT
+    assert draft["params"]["jc"] == handler.AWG_DEFAULT_PARAMS["jc"]
+
+
 def test_existing_config_shows_reconfiguration_warning(monkeypatch):
     setup_admin(monkeypatch, exists=True)
     bot = FakeBot()
