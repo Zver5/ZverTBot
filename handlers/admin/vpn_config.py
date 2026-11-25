@@ -22,6 +22,7 @@ from services.vpn_server_setup import (
     setup_awg_server,
     setup_xray_server,
 )
+from services.xray.config_manager import get_vless_inbounds, load_xray_config
 from ui.keyboards import (
     vpn_config_confirm_kb,
     vpn_config_menu_kb,
@@ -130,8 +131,87 @@ def parse_custom_parameters(protocol: str, raw: str, base_params=None) -> dict:
 
 def _initial_protocol_params(protocol: str, config_exists: bool) -> dict:
     """Загружает активные параметры протокола для нового черновика."""
-    if protocol != "awg" or not config_exists:
+    if not config_exists:
         return parse_custom_parameters(protocol, "")
+
+    if protocol == "xray":
+        config = load_xray_config()
+        inbounds = get_vless_inbounds(config)
+
+        if len(inbounds) != 1:
+            raise ValueError(
+                "Безопасная перенастройка поддерживает ровно один VLESS inbound."
+            )
+
+        inbound = inbounds[0]
+        port = inbound.get("port")
+        if type(port) is not int:
+            raise ValueError("В существующем VLESS-конфиге некорректный порт.")
+
+        stream = inbound.get("streamSettings")
+        if not isinstance(stream, dict):
+            raise ValueError("В VLESS-конфиге отсутствуют streamSettings.")
+        if stream.get("network") != "tcp" or stream.get("security") != "reality":
+            raise ValueError("Поддерживается только VLESS TCP Reality.")
+
+        reality = stream.get("realitySettings")
+        if not isinstance(reality, dict):
+            raise ValueError("В VLESS-конфиге отсутствуют Reality settings.")
+
+        server_names = reality.get("serverNames")
+        if (
+            not isinstance(server_names, list)
+            or len(server_names) != 1
+            or not isinstance(server_names[0], str)
+            or not server_names[0]
+        ):
+            raise ValueError(
+                "Невозможно однозначно определить SNI: "
+                "ожидается ровно один serverNames."
+            )
+
+        dest = reality.get("dest")
+        if not isinstance(dest, str) or not dest:
+            raise ValueError("В VLESS-конфиге отсутствует Reality dest.")
+
+        settings = inbound.get("settings")
+        clients = settings.get("clients") if isinstance(settings, dict) else None
+        if not isinstance(clients, list) or not clients:
+            raise ValueError(
+                "Невозможно определить Flow: список VLESS-клиентов пуст или повреждён."
+            )
+
+        flows = set()
+        for client in clients:
+            if not isinstance(client, dict):
+                raise ValueError(
+                    "В VLESS-конфиге обнаружена некорректная запись клиента."
+                )
+
+            flow = client.get("flow") or ""
+            if flow not in ("", "xtls-rprx-vision"):
+                raise ValueError(f"Неподдерживаемый Flow в VLESS-конфиге: {flow!r}")
+            flows.add(flow)
+
+        if len(flows) != 1:
+            raise ValueError(
+                "У VLESS-клиентов разные Flow. "
+                "Автоматическая перенастройка небезопасна."
+            )
+
+        return parse_custom_parameters(
+            "xray",
+            "",
+            base_params={
+                "port": port,
+                "sni": server_names[0],
+                "dest": dest,
+                "flow": flows.pop(),
+            },
+        )
+
+    if protocol != "awg":
+        raise ValueError("Неизвестный протокол")
 
     fields = get_awg_interface_params()
     defaults = {"port": AWG_DEFAULT_PORT, **AWG_DEFAULT_PARAMS}

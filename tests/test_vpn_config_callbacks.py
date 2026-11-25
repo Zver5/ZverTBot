@@ -115,6 +115,117 @@ def test_protocol_selection_creates_default_draft(monkeypatch):
     assert ("go", 501, handler.ADMIN_VPN_CONFIG_PARAMS) in nav.calls
 
 
+def test_xray_selection_loads_existing_inbound_parameters(monkeypatch):
+    setup_admin(monkeypatch, exists=True)
+
+    config = {
+        "inbounds": [{
+            "protocol": "vless",
+            "port": 8443,
+            "settings": {
+                "clients": [
+                    {"id": "one", "email": "one", "flow": "xtls-rprx-vision"},
+                    {"id": "two", "email": "two", "flow": "xtls-rprx-vision"},
+                ],
+            },
+            "streamSettings": {
+                "network": "tcp",
+                "security": "reality",
+                "realitySettings": {
+                    "dest": "example.org:443",
+                    "serverNames": ["example.org"],
+                },
+            },
+        }],
+    }
+    monkeypatch.setattr(handler, "load_xray_config", lambda: config)
+
+    params = handler._initial_protocol_params("xray", True)
+
+    assert params == {
+        "port": 8443,
+        "sni": "example.org",
+        "dest": "example.org:443",
+        "flow": "xtls-rprx-vision",
+    }
+
+
+def test_xray_selection_loads_none_flow(monkeypatch):
+    setup_admin(monkeypatch, exists=True)
+    config = {
+        "inbounds": [{
+            "protocol": "vless",
+            "port": 443,
+            "settings": {"clients": [{"id": "one", "email": "one"}]},
+            "streamSettings": {
+                "network": "tcp",
+                "security": "reality",
+                "realitySettings": {
+                    "dest": "example.org:443",
+                    "serverNames": ["example.org"],
+                },
+            },
+        }],
+    }
+    monkeypatch.setattr(handler, "load_xray_config", lambda: config)
+
+    params = handler._initial_protocol_params("xray", True)
+
+    assert params["flow"] == ""
+
+
+def test_xray_selection_rejects_multiple_vless_inbounds(monkeypatch):
+    setup_admin(monkeypatch, exists=True)
+    inbound = {
+        "protocol": "vless",
+        "port": 443,
+        "settings": {"clients": [{"id": "one", "email": "one"}]},
+        "streamSettings": {
+            "network": "tcp",
+            "security": "reality",
+            "realitySettings": {
+                "dest": "example.org:443",
+                "serverNames": ["example.org"],
+            },
+        },
+    }
+    monkeypatch.setattr(
+        handler, "load_xray_config",
+        lambda: {"inbounds": [inbound, dict(inbound)]},
+    )
+
+    with pytest.raises(ValueError, match="ровно один VLESS inbound"):
+        handler._initial_protocol_params("xray", True)
+
+
+def test_xray_selection_rejects_mixed_client_flows(monkeypatch):
+    setup_admin(monkeypatch, exists=True)
+    config = {
+        "inbounds": [{
+            "protocol": "vless",
+            "port": 443,
+            "settings": {
+                "clients": [
+                    {"id": "one", "email": "one", "flow": "xtls-rprx-vision"},
+                    {"id": "two", "email": "two", "flow": ""},
+                ],
+            },
+            "streamSettings": {
+                "network": "tcp",
+                "security": "reality",
+                "realitySettings": {
+                    "dest": "example.org:443",
+                    "serverNames": ["example.org"],
+                },
+            },
+        }],
+    }
+    monkeypatch.setattr(handler, "load_xray_config", lambda: config)
+
+    with pytest.raises(ValueError, match="разные Flow"):
+        handler._initial_protocol_params("xray", True)
+
+
 def test_awg_selection_loads_existing_interface_parameters(monkeypatch):
     setup_admin(monkeypatch, exists=True)
     bot = FakeBot()
