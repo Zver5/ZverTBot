@@ -427,7 +427,7 @@ def _strict_awg_interface_fields(content: str) -> dict[str, str]:
         key = key.strip().lower()
         if not key:
             raise ValueError("В AWG [Interface] найден пустой ключ")
-        if key in fields:
+        if key in fields and key not in {"postup", "postdown"}:
             raise ValueError(f"Дублирующийся параметр AWG: {key}")
         fields[key] = value.strip()
 

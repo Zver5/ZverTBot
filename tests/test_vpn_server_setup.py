@@ -888,3 +888,32 @@ ListenPort = 58353
         assert "Дублирующийся параметр AWG: listenport" in str(exc)
     else:
         raise AssertionError("Ожидался отказ при повторном ListenPort")
+
+
+def test_awg_reconfigure_preserves_multiple_postup_postdown():
+    content = """[Interface]
+PrivateKey = SERVER_KEY
+Address = 10.66.66.1/24
+ListenPort = 58352
+PostUp = first rule
+PostUp = second rule
+PostDown = first cleanup
+PostDown = second cleanup
+
+[Peer]
+PublicKey = PEER_KEY
+AllowedIPs = 10.66.66.2/32
+"""
+
+    result = vpn_server_setup._modify_awg_config(
+        content, port=58350, params={"jc": 4}
+    )
+
+    assert result.count("PostUp =") == 2
+    assert result.count("PostDown =") == 2
+    assert "PostUp = first rule" in result
+    assert "PostUp = second rule" in result
+    assert "PostDown = first cleanup" in result
+    assert "PostDown = second cleanup" in result
+    assert "ListenPort = 58350" in result
+    assert "Jc = 4" in result
