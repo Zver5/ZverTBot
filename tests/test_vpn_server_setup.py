@@ -1,8 +1,31 @@
+import pytest
 
 from services import vpn_server_setup
 from services.awg import config_manager as awg_config_manager
 from services.awg import network as awg_network
 from services.xray import config_manager as xray_config_manager
+
+
+@pytest.fixture(autouse=True)
+def mock_xray_firewall_transaction(monkeypatch):
+    class _Transaction:
+        def __init__(self):
+            self.commit_calls = 0
+            self.rollback_calls = 0
+
+        def commit(self):
+            self.commit_calls += 1
+
+        def rollback(self):
+            self.rollback_calls += 1
+
+    transaction = _Transaction()
+    monkeypatch.setattr(
+        vpn_server_setup.xray_firewall,
+        "prepare_xray_port_change",
+        lambda old_port, new_port: transaction,
+    )
+    return transaction
 
 
 def test_setup_result_is_immutable():
@@ -52,9 +75,7 @@ def test_build_xray_config_generates_reality_config(monkeypatch):
     assert "serverName" not in reality
 
     api_inbound = next(
-        inbound
-        for inbound in config["inbounds"]
-        if inbound.get("tag") == "api"
+        inbound for inbound in config["inbounds"] if inbound.get("tag") == "api"
     )
     assert api_inbound == {
         "listen": "127.0.0.1",
@@ -76,10 +97,7 @@ def test_build_xray_config_generates_reality_config(monkeypatch):
         "statsUserUplink": True,
         "statsUserDownlink": True,
     }
-    assert not any(
-        outbound.get("tag") == "api"
-        for outbound in config["outbounds"]
-    )
+    assert not any(outbound.get("tag") == "api" for outbound in config["outbounds"])
 
     assert config["routing"]["rules"] == [
         {
@@ -101,30 +119,28 @@ def test_generate_reality_private_key_parses_current_xray_output(monkeypatch):
         ),
     )
 
-    assert (
-        vpn_server_setup._generate_reality_private_key()
-        == "generated-private-key"
-    )
+    assert vpn_server_setup._generate_reality_private_key() == "generated-private-key"
 
 
-def test_setup_xray_server_refuses_broken_config_without_backup(
-    monkeypatch, tmp_path
-):
+def test_setup_xray_server_refuses_broken_config_without_backup(monkeypatch, tmp_path):
     config_path = tmp_path / "config.json"
     original = '{"inbounds": [{"protocol": "vless"}]}'
     config_path.write_text(original, encoding="utf-8")
 
     monkeypatch.setattr(vpn_server_setup, "XRAY_CONF", config_path)
     monkeypatch.setattr(
-        vpn_server_setup, "load_xray_config",
+        vpn_server_setup,
+        "load_xray_config",
         lambda: {"inbounds": [{"protocol": "vless"}]},
     )
     monkeypatch.setattr(
-        vpn_server_setup, "get_xray_readiness",
+        vpn_server_setup,
+        "get_xray_readiness",
         lambda config: (False, ["broken config"]),
     )
     monkeypatch.setattr(
-        vpn_server_setup, "_build_xray_config",
+        vpn_server_setup,
+        "_build_xray_config",
         lambda **kwargs: (_ for _ in ()).throw(
             AssertionError("Нельзя генерировать новые ключи")
         ),
@@ -137,7 +153,6 @@ def test_setup_xray_server_refuses_broken_config_without_backup(
     assert not list(tmp_path.glob("config.json.bak-*"))
 
 
-
 def test_setup_xray_server_does_not_backup_or_replace_invalid_config(
     monkeypatch, tmp_path
 ):
@@ -146,11 +161,10 @@ def test_setup_xray_server_does_not_backup_or_replace_invalid_config(
     config_path.write_text(original, encoding="utf-8")
 
     monkeypatch.setattr(vpn_server_setup, "XRAY_CONF", config_path)
+    monkeypatch.setattr(vpn_server_setup, "load_xray_config", lambda: {"broken": True})
     monkeypatch.setattr(
-        vpn_server_setup, "load_xray_config", lambda: {"broken": True}
-    )
-    monkeypatch.setattr(
-        vpn_server_setup, "get_xray_readiness",
+        vpn_server_setup,
+        "get_xray_readiness",
         lambda config: (False, ["invalid"]),
     )
 
@@ -161,9 +175,8 @@ def test_setup_xray_server_does_not_backup_or_replace_invalid_config(
     assert not list(tmp_path.glob("config.json.bak-*"))
 
 
-
 def test_setup_xray_server_creates_config_and_starts_new_service(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, mock_xray_firewall_transaction
 ):
     import json
 
@@ -171,26 +184,31 @@ def test_setup_xray_server_creates_config_and_starts_new_service(
     candidate = {"inbounds": [{"protocol": "vless", "port": 8443}]}
 
     monkeypatch.setattr(vpn_server_setup, "XRAY_CONF", config_path)
+    monkeypatch.setattr(xray_config_manager, "XRAY_CONF", config_path)
     monkeypatch.setattr(
-        xray_config_manager, "XRAY_CONF", config_path
-    )
-    monkeypatch.setattr(
-        vpn_server_setup, "_build_xray_config",
+        vpn_server_setup,
+        "_build_xray_config",
         lambda **kwargs: candidate,
     )
+    monkeypatch.setattr(vpn_server_setup, "validate_xray_config", lambda config: True)
     monkeypatch.setattr(
-        vpn_server_setup, "validate_xray_config", lambda config: True
-    )
-    monkeypatch.setattr(
-        vpn_server_setup, "get_service_state",
+        vpn_server_setup,
+        "get_service_state",
         lambda service: "inactive" if not config_path.exists() else "active",
     )
     monkeypatch.setattr(
-        vpn_server_setup, "run_systemctl",
+        vpn_server_setup,
+        "run_systemctl",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
-        vpn_server_setup, "save_xray_config",
+        vpn_server_setup,
+        "_is_tcp_port_listening",
+        lambda port: port == 8443,
+    )
+    monkeypatch.setattr(
+        vpn_server_setup,
+        "save_xray_config",
         lambda config: (
             config_path.write_text(json.dumps(config), encoding="utf-8"),
             config_path.chmod(0o644),
@@ -202,7 +220,47 @@ def test_setup_xray_server_creates_config_and_starts_new_service(
     assert result.created is True
     assert json.loads(config_path.read_text(encoding="utf-8")) == candidate
     assert config_path.stat().st_mode & 0o777 == 0o644
+    assert mock_xray_firewall_transaction.commit_calls == 1
+    assert mock_xray_firewall_transaction.rollback_calls == 0
 
+
+def test_xray_new_config_rolls_back_when_port_is_not_listening(
+    monkeypatch, tmp_path, mock_xray_firewall_transaction
+):
+    import json
+
+    config_path = tmp_path / "config.json"
+    candidate = {"inbounds": [{"protocol": "vless", "port": 54321}]}
+
+    monkeypatch.setattr(vpn_server_setup, "XRAY_CONF", config_path)
+    monkeypatch.setattr(vpn_server_setup, "validate_xray_config", lambda config: True)
+    monkeypatch.setattr(
+        vpn_server_setup,
+        "get_service_state",
+        lambda service: "active",
+    )
+    monkeypatch.setattr(
+        vpn_server_setup,
+        "save_xray_config",
+        lambda config: config_path.write_text(json.dumps(config), encoding="utf-8"),
+    )
+    monkeypatch.setattr(
+        vpn_server_setup,
+        "run_systemctl",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        vpn_server_setup,
+        "_is_tcp_port_listening",
+        lambda port: False,
+    )
+
+    with pytest.raises(RuntimeError, match="не открыл TCP/54321"):
+        vpn_server_setup._apply_xray_transaction(candidate, existed=False)
+
+    assert not config_path.exists()
+    assert mock_xray_firewall_transaction.commit_calls == 0
+    assert mock_xray_firewall_transaction.rollback_calls == 1
 
 
 def test_build_awg_config(monkeypatch):
@@ -231,9 +289,7 @@ def test_build_awg_config(monkeypatch):
     assert "[Peer]" not in config
 
 
-def test_setup_awg_server_reconfigures_without_changing_identity(
-    monkeypatch, tmp_path
-):
+def test_setup_awg_server_reconfigures_without_changing_identity(monkeypatch, tmp_path):
     config_path = tmp_path / "awg0.conf"
     original = (
         "[Interface]\n"
@@ -254,17 +310,17 @@ def test_setup_awg_server_reconfigures_without_changing_identity(
     monkeypatch.setattr(vpn_server_setup, "AWG_CONF", config_path)
     monkeypatch.setattr(awg_config_manager, "AWG_CONF", config_path)
     monkeypatch.setattr(
-        vpn_server_setup, "get_awg_readiness",
+        vpn_server_setup,
+        "get_awg_readiness",
         lambda content: (True, []),
     )
-    monkeypatch.setattr(
-        vpn_server_setup, "_run_command", lambda *args, **kwargs: ""
-    )
+    monkeypatch.setattr(vpn_server_setup, "_run_command", lambda *args, **kwargs: "")
     monkeypatch.setattr(
         vpn_server_setup, "get_service_state", lambda service: "inactive"
     )
     monkeypatch.setattr(
-        vpn_server_setup, "save_awg_config",
+        vpn_server_setup,
+        "save_awg_config",
         lambda content: config_path.write_text(content, encoding="utf-8"),
     )
 
@@ -283,21 +339,20 @@ def test_setup_awg_server_reconfigures_without_changing_identity(
     assert list(tmp_path.glob("awg0.conf.bak-*"))
 
 
-
-def test_setup_awg_server_refuses_invalid_config_without_backup(
-    monkeypatch, tmp_path
-):
+def test_setup_awg_server_refuses_invalid_config_without_backup(monkeypatch, tmp_path):
     config_path = tmp_path / "awg0.conf"
     original = "[Interface]\nPrivateKey = REPLACE_WITH_KEY\n"
     config_path.write_text(original, encoding="utf-8")
 
     monkeypatch.setattr(vpn_server_setup, "AWG_CONF", config_path)
     monkeypatch.setattr(
-        vpn_server_setup, "get_awg_readiness",
+        vpn_server_setup,
+        "get_awg_readiness",
         lambda content: (False, ["placeholder key"]),
     )
     monkeypatch.setattr(
-        vpn_server_setup, "_generate_awg_private_key",
+        vpn_server_setup,
+        "_generate_awg_private_key",
         lambda: (_ for _ in ()).throw(
             AssertionError("Нельзя генерировать ключ для существующего конфига")
         ),
@@ -310,17 +365,15 @@ def test_setup_awg_server_refuses_invalid_config_without_backup(
     assert not list(tmp_path.glob("awg0.conf.bak-*"))
 
 
-
-def test_setup_awg_server_does_not_replace_broken_config(
-    monkeypatch, tmp_path
-):
+def test_setup_awg_server_does_not_replace_broken_config(monkeypatch, tmp_path):
     config_path = tmp_path / "awg0.conf"
     original = "[Interface]\nPrivateKey = broken\n"
     config_path.write_text(original, encoding="utf-8")
 
     monkeypatch.setattr(vpn_server_setup, "AWG_CONF", config_path)
     monkeypatch.setattr(
-        vpn_server_setup, "get_awg_readiness",
+        vpn_server_setup,
+        "get_awg_readiness",
         lambda content: (False, ["broken config"]),
     )
 
@@ -329,7 +382,6 @@ def test_setup_awg_server_does_not_replace_broken_config(
     assert result.created is False
     assert config_path.read_text(encoding="utf-8") == original
     assert not list(tmp_path.glob("awg0.conf.bak-*"))
-
 
 
 def test_build_awg_network_hooks_uses_default_route(monkeypatch):
@@ -344,23 +396,14 @@ def test_build_awg_network_hooks_uses_default_route(monkeypatch):
     )
 
     assert hooks.wan_interface == "ens3"
-    assert any(
-        "10.66.66.0/24" in command
-        for command in hooks.post_up
-    )
+    assert any("10.66.66.0/24" in command for command in hooks.post_up)
     assert any(
         "-s 10.66.66.0/24 -o ens3 "
         "-m comment --comment ZverTBot-AWG -j MASQUERADE" in command
         for command in hooks.post_up
     )
-    assert all(
-        "ZverTBot-AWG" in command
-        for command in hooks.post_up
-    )
-    assert all(
-        "ZverTBot-AWG" in command
-        for command in hooks.post_down
-    )
+    assert all("ZverTBot-AWG" in command for command in hooks.post_up)
+    assert all("ZverTBot-AWG" in command for command in hooks.post_down)
 
 
 def test_extract_awg_peer_blocks_preserves_full_blocks():
@@ -425,12 +468,7 @@ def test_build_awg_config_keeps_peer_blocks(monkeypatch):
         post_down=("iptables -D TEST",),
     )
 
-    peer = (
-        "# Name: Alice\n"
-        "[Peer]\n"
-        "PublicKey = alice-key\n"
-        "AllowedIPs = 10.66.66.8/32\n"
-    )
+    peer = "# Name: Alice\n[Peer]\nPublicKey = alice-key\nAllowedIPs = 10.66.66.8/32\n"
 
     config = vpn_server_setup._build_awg_config(
         peer_blocks=[peer],
@@ -466,17 +504,17 @@ def test_setup_awg_server_preserves_peers_and_hooks_on_reconfigure(
     monkeypatch.setattr(vpn_server_setup, "AWG_CONF", config_path)
     monkeypatch.setattr(awg_config_manager, "AWG_CONF", config_path)
     monkeypatch.setattr(
-        vpn_server_setup, "get_awg_readiness",
+        vpn_server_setup,
+        "get_awg_readiness",
         lambda content: (True, []),
     )
-    monkeypatch.setattr(
-        vpn_server_setup, "_run_command", lambda *args, **kwargs: ""
-    )
+    monkeypatch.setattr(vpn_server_setup, "_run_command", lambda *args, **kwargs: "")
     monkeypatch.setattr(
         vpn_server_setup, "get_service_state", lambda service: "inactive"
     )
     monkeypatch.setattr(
-        vpn_server_setup, "save_awg_config",
+        vpn_server_setup,
+        "save_awg_config",
         lambda content: config_path.write_text(content, encoding="utf-8"),
     )
 
@@ -497,10 +535,8 @@ def test_setup_awg_server_preserves_peers_and_hooks_on_reconfigure(
     assert list(tmp_path.glob("awg0.conf.bak-*"))
 
 
-
-
 def test_setup_xray_server_reconfigures_reality_without_losing_identity(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, mock_xray_firewall_transaction
 ):
     import json
 
@@ -513,8 +549,11 @@ def test_setup_xray_server_reconfigures_reality_without_losing_identity(
                 "port": 2096,
                 "settings": {
                     "clients": [
-                        {"id": "uuid-kept", "email": "existing-user",
-                         "flow": "xtls-rprx-vision"}
+                        {
+                            "id": "uuid-kept",
+                            "email": "existing-user",
+                            "flow": "xtls-rprx-vision",
+                        }
                     ]
                 },
                 "streamSettings": {
@@ -537,9 +576,7 @@ def test_setup_xray_server_reconfigures_reality_without_losing_identity(
         "api": {"tag": "api", "services": ["HandlerService"]},
         "outbounds": [{"protocol": "freedom", "tag": "direct"}],
         "routing": {
-            "rules": [
-                {"type": "field", "inboundTag": ["api"], "outboundTag": "api"}
-            ]
+            "rules": [{"type": "field", "inboundTag": ["api"], "outboundTag": "api"}]
         },
     }
     config_path.write_text(json.dumps(original), encoding="utf-8")
@@ -548,20 +585,18 @@ def test_setup_xray_server_reconfigures_reality_without_losing_identity(
     monkeypatch.setattr(xray_config_manager, "XRAY_CONF", config_path)
     monkeypatch.setattr(vpn_server_setup, "load_xray_config", lambda: original)
     monkeypatch.setattr(
-        vpn_server_setup, "get_xray_readiness",
+        vpn_server_setup,
+        "get_xray_readiness",
         lambda config: (True, []),
     )
-    monkeypatch.setattr(
-        vpn_server_setup, "validate_xray_config", lambda config: True
-    )
+    monkeypatch.setattr(vpn_server_setup, "validate_xray_config", lambda config: True)
     monkeypatch.setattr(
         vpn_server_setup, "get_service_state", lambda service: "inactive"
     )
     monkeypatch.setattr(
-        vpn_server_setup, "save_xray_config",
-        lambda config: config_path.write_text(
-            json.dumps(config), encoding="utf-8"
-        ),
+        vpn_server_setup,
+        "save_xray_config",
+        lambda config: config_path.write_text(json.dumps(config), encoding="utf-8"),
     )
 
     result = vpn_server_setup.setup_xray_server(
@@ -587,7 +622,8 @@ def test_setup_xray_server_reconfigures_reality_without_losing_identity(
     assert updated["outbounds"] == original["outbounds"]
     assert updated["routing"] == original["routing"]
     assert list(tmp_path.glob("config.json.bak-*"))
-
+    assert mock_xray_firewall_transaction.commit_calls == 1
+    assert mock_xray_firewall_transaction.rollback_calls == 0
 
 
 def test_build_xray_config_accepts_custom_parameters(monkeypatch):
@@ -702,60 +738,59 @@ def test_setup_awg_initial_only_does_not_replace_existing_config(
 
 
 def test_xray_reconfigure_rolls_back_config_when_restart_fails(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, mock_xray_firewall_transaction
 ):
     import json
 
     config_path = tmp_path / "config.json"
     original = {
-        "inbounds": [{
-            "protocol": "vless",
-            "port": 2096,
-            "settings": {
-                "clients": [{"id": "preserved-uuid"}],
-            },
-            "streamSettings": {
-                "network": "tcp",
-                "security": "reality",
-                "realitySettings": {
-                    "dest": "old.example:443",
-                    "serverNames": ["old.example"],
-                    "privateKey": "preserved-private-key",
-                    "shortIds": ["0123456789abcdef"],
+        "inbounds": [
+            {
+                "protocol": "vless",
+                "port": 2096,
+                "settings": {
+                    "clients": [{"id": "preserved-uuid"}],
                 },
-            },
-        }],
+                "streamSettings": {
+                    "network": "tcp",
+                    "security": "reality",
+                    "realitySettings": {
+                        "dest": "old.example:443",
+                        "serverNames": ["old.example"],
+                        "privateKey": "preserved-private-key",
+                        "shortIds": ["0123456789abcdef"],
+                    },
+                },
+            }
+        ],
         "outbounds": [{"protocol": "freedom"}],
     }
     original_text = json.dumps(original, indent=4) + "\n"
     config_path.write_text(original_text, encoding="utf-8")
 
     monkeypatch.setattr(vpn_server_setup, "XRAY_CONF", config_path)
+    monkeypatch.setattr(xray_config_manager, "XRAY_CONF", config_path)
+    monkeypatch.setattr(vpn_server_setup, "load_xray_config", lambda: original)
     monkeypatch.setattr(
-        xray_config_manager, "XRAY_CONF", config_path
-    )
-    monkeypatch.setattr(
-        vpn_server_setup, "load_xray_config", lambda: original
-    )
-    monkeypatch.setattr(
-        vpn_server_setup, "get_xray_readiness",
+        vpn_server_setup,
+        "get_xray_readiness",
         lambda _config: (True, []),
     )
     monkeypatch.setattr(
-        vpn_server_setup, "validate_xray_config",
+        vpn_server_setup,
+        "validate_xray_config",
         lambda _config: True,
     )
     monkeypatch.setattr(
-        vpn_server_setup, "get_service_state",
+        vpn_server_setup,
+        "get_service_state",
         lambda _service: "active",
     )
 
     def save_config(config):
         config_path.write_text(json.dumps(config), encoding="utf-8")
 
-    monkeypatch.setattr(
-        vpn_server_setup, "save_xray_config", save_config
-    )
+    monkeypatch.setattr(vpn_server_setup, "save_xray_config", save_config)
 
     restart_calls = []
 
@@ -764,9 +799,7 @@ def test_xray_reconfigure_rolls_back_config_when_restart_fails(
         if len(restart_calls) == 1:
             raise RuntimeError("simulated restart failure")
 
-    monkeypatch.setattr(
-        vpn_server_setup, "restart_service", fail_first_restart
-    )
+    monkeypatch.setattr(vpn_server_setup, "restart_service", fail_first_restart)
 
     result = vpn_server_setup.setup_xray_server(
         port=8443,
@@ -779,11 +812,11 @@ def test_xray_reconfigure_rolls_back_config_when_restart_fails(
     assert config_path.read_text(encoding="utf-8") == original_text
     assert len(list(tmp_path.glob("config.json.bak-*"))) == 1
     assert restart_calls == ["xray", "xray"]
+    assert mock_xray_firewall_transaction.commit_calls == 0
+    assert mock_xray_firewall_transaction.rollback_calls == 1
 
 
-def test_awg_reconfigure_rolls_back_config_when_restart_fails(
-    monkeypatch, tmp_path
-):
+def test_awg_reconfigure_rolls_back_config_when_restart_fails(monkeypatch, tmp_path):
     config_path = tmp_path / "awg0.conf"
     original = (
         "[Interface]\n"
@@ -802,22 +835,23 @@ def test_awg_reconfigure_rolls_back_config_when_restart_fails(
     config_path.write_text(original, encoding="utf-8")
 
     monkeypatch.setattr(vpn_server_setup, "AWG_CONF", config_path)
+    monkeypatch.setattr(awg_config_manager, "AWG_CONF", config_path)
     monkeypatch.setattr(
-        awg_config_manager, "AWG_CONF", config_path
-    )
-    monkeypatch.setattr(
-        vpn_server_setup, "get_awg_readiness",
+        vpn_server_setup,
+        "get_awg_readiness",
         lambda _content: (True, []),
     )
     monkeypatch.setattr(
         vpn_server_setup, "_validate_awg_candidate", lambda _content: None
     )
     monkeypatch.setattr(
-        vpn_server_setup, "get_service_state",
+        vpn_server_setup,
+        "get_service_state",
         lambda _service: "active",
     )
     monkeypatch.setattr(
-        vpn_server_setup, "save_awg_config",
+        vpn_server_setup,
+        "save_awg_config",
         lambda content: config_path.write_text(content, encoding="utf-8"),
     )
 
@@ -828,9 +862,7 @@ def test_awg_reconfigure_rolls_back_config_when_restart_fails(
         if len(restart_calls) == 1:
             raise RuntimeError("simulated restart failure")
 
-    monkeypatch.setattr(
-        vpn_server_setup, "restart_service", fail_first_restart
-    )
+    monkeypatch.setattr(vpn_server_setup, "restart_service", fail_first_restart)
 
     result = vpn_server_setup.setup_awg_server(
         port=58354,
@@ -845,7 +877,6 @@ def test_awg_reconfigure_rolls_back_config_when_restart_fails(
         "awg-quick@awg0",
         "awg-quick@awg0",
     ]
-
 
 
 def test_awg_reconfigure_rejects_duplicate_interface_section():
@@ -863,9 +894,7 @@ PrivateKey = ANOTHER_KEY
 """
 
     try:
-        vpn_server_setup._modify_awg_config(
-            content, port=58353, params={}
-        )
+        vpn_server_setup._modify_awg_config(content, port=58353, params={})
     except ValueError as exc:
         assert "ровно одну секцию [Interface]" in str(exc)
     else:
@@ -881,9 +910,7 @@ ListenPort = 58353
 """
 
     try:
-        vpn_server_setup._modify_awg_config(
-            content, port=58354, params={}
-        )
+        vpn_server_setup._modify_awg_config(content, port=58354, params={})
     except ValueError as exc:
         assert "Дублирующийся параметр AWG: listenport" in str(exc)
     else:
@@ -905,9 +932,7 @@ PublicKey = PEER_KEY
 AllowedIPs = 10.66.66.2/32
 """
 
-    result = vpn_server_setup._modify_awg_config(
-        content, port=58350, params={"jc": 4}
-    )
+    result = vpn_server_setup._modify_awg_config(content, port=58350, params={"jc": 4})
 
     assert "PostUp = first rule" in result
     assert "PostUp = second rule" in result
@@ -923,16 +948,13 @@ AllowedIPs = 10.66.66.2/32
     assert "Jc = 4" in result
 
 
-def test_validate_awg_candidate_uses_valid_interface_filename(
-    tmp_path, monkeypatch
-):
+def test_validate_awg_candidate_uses_valid_interface_filename(tmp_path, monkeypatch):
     from pathlib import Path
 
+    monkeypatch.setattr(vpn_server_setup, "AWG_CONF", tmp_path / "awg0.conf")
     monkeypatch.setattr(
-        vpn_server_setup, "AWG_CONF", tmp_path / "awg0.conf"
-    )
-    monkeypatch.setattr(
-        vpn_server_setup, "get_awg_readiness",
+        vpn_server_setup,
+        "get_awg_readiness",
         lambda _content: (True, []),
     )
 
@@ -952,16 +974,13 @@ def test_validate_awg_candidate_uses_valid_interface_filename(
     assert not temp_dirs[0].exists()
 
 
-def test_validate_awg_candidate_cleans_temp_directory_on_error(
-    tmp_path, monkeypatch
-):
+def test_validate_awg_candidate_cleans_temp_directory_on_error(tmp_path, monkeypatch):
     from pathlib import Path
 
+    monkeypatch.setattr(vpn_server_setup, "AWG_CONF", tmp_path / "awg0.conf")
     monkeypatch.setattr(
-        vpn_server_setup, "AWG_CONF", tmp_path / "awg0.conf"
-    )
-    monkeypatch.setattr(
-        vpn_server_setup, "get_awg_readiness",
+        vpn_server_setup,
+        "get_awg_readiness",
         lambda _content: (True, []),
     )
 
@@ -1053,3 +1072,21 @@ def test_awg_reconfigure_updates_managed_input_hooks_and_preserves_custom():
     assert "--dport 58352" not in updated_again
     assert "--dport 58354" in updated_again
     assert "--dport 58355" in updated_again
+
+
+@pytest.mark.parametrize(
+    ("process", "pid", "expected"),
+    [("xray", "1234", True), ("nginx", "1234", False), ("xray", "5678", False)],
+)
+def test_xray_listener_requires_matching_process_and_pid(
+    monkeypatch, process, pid, expected
+):
+    def fake_run(*args, **kwargs):
+        if args[0] == "systemctl":
+            return "1234"
+        return (
+            f'LISTEN 0 4096 0.0.0.0:2097 0.0.0.0:* users:(("{process}",pid={pid},fd=3))'
+        )
+
+    monkeypatch.setattr(vpn_server_setup, "_run_command", fake_run)
+    assert vpn_server_setup._is_tcp_port_listening(2097) is expected

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -20,6 +21,7 @@ from services.awg.network import (
     build_awg_input_firewall_hooks,
     build_awg_network_hooks,
 )
+from services.xray import firewall as xray_firewall
 from services.xray.config_manager import (
     get_xray_readiness,
     load_xray_config,
@@ -51,9 +53,17 @@ XRAY_DEFAULT_DEST = "speed.cloudflare.com:443"
 AWG_DEFAULT_PORT = 58352
 AWG_DEFAULT_ADDRESS = "10.66.66.1/24"
 AWG_DEFAULT_PARAMS = {
-    "jc": 4, "jmin": 40, "jmax": 70,
-    "s1": 117, "s2": 74, "s3": 63, "s4": 82,
-    "h1": 1, "h2": 2, "h3": 3, "h4": 4,
+    "jc": 4,
+    "jmin": 40,
+    "jmax": 70,
+    "s1": 117,
+    "s2": 74,
+    "s3": 63,
+    "s4": 82,
+    "h1": 1,
+    "h2": 2,
+    "h3": 3,
+    "h4": 4,
 }
 
 
@@ -87,6 +97,27 @@ def _run_command(*args: str, timeout: int = 10, input_text: str | None = None) -
         raise RuntimeError(f"{args[0]} {' '.join(args[1:])}: {error}")
 
     return result.stdout.strip()
+
+
+def _is_tcp_port_listening(port: int) -> bool:
+    """Проверяет, что TCP-порт слушает основной процесс службы Xray."""
+    main_pid = _run_command(
+        "systemctl", "show", "xray", "--property=MainPID", "--value"
+    )
+    if not main_pid.isdigit() or int(main_pid) <= 0:
+        return False
+
+    output = _run_command("ss", "-lntpH")
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) < 6 or fields[0] != "LISTEN":
+            continue
+        if fields[3].rsplit(":", 1)[-1] != str(port):
+            continue
+        match = re.search(r'users:\(\("xray",pid=(\d+),', line)
+        if match and match.group(1) == main_pid:
+            return True
+    return False
 
 
 def _run_xray(*args: str) -> str:
@@ -190,9 +221,7 @@ def _build_xray_config(
                 "listen": "127.0.0.1",
                 "port": 10085,
                 "protocol": "dokodemo-door",
-                "settings": {
-                    "address": "127.0.0.1"
-                },
+                "settings": {"address": "127.0.0.1"},
                 "tag": "api",
             },
         ],
@@ -289,9 +318,17 @@ def _build_awg_config(
 ) -> str:
     """Создаёт серверный AWG-конфиг, сохраняя переданные peers."""
     params = {
-        "jc": jc, "jmin": jmin, "jmax": jmax,
-        "s1": s1, "s2": s2, "s3": s3, "s4": s4,
-        "h1": h1, "h2": h2, "h3": h3, "h4": h4,
+        "jc": jc,
+        "jmin": jmin,
+        "jmax": jmax,
+        "s1": s1,
+        "s2": s2,
+        "s3": s3,
+        "s4": s4,
+        "h1": h1,
+        "h2": h2,
+        "h3": h3,
+        "h4": h4,
     }
     _validate_awg_parameters(port, **params)
     private_key = _generate_awg_private_key()
@@ -315,14 +352,8 @@ def _build_awg_config(
     ]
 
     if network_hooks is not None:
-        lines.extend(
-            f"PostUp = {command}"
-            for command in network_hooks.post_up
-        )
-        lines.extend(
-            f"PostDown = {command}"
-            for command in network_hooks.post_down
-        )
+        lines.extend(f"PostUp = {command}" for command in network_hooks.post_up)
+        lines.extend(f"PostDown = {command}" for command in network_hooks.post_down)
 
     input_up, input_down = build_awg_input_firewall_hooks(port)
     lines.extend(f"PostUp = {command}" for command in input_up)
@@ -370,7 +401,8 @@ def _modify_xray_config(
         raise ValueError("Xray config: inbounds должен быть списком")
 
     vless = [
-        item for item in inbounds
+        item
+        for item in inbounds
         if isinstance(item, dict) and item.get("protocol") == "vless"
     ]
     if len(vless) != 1:
@@ -474,10 +506,7 @@ def _modify_awg_config(
         "h4": "H4",
     }
     values = {"ListenPort": port}
-    values.update({
-        awg_names[key.lower()]: value
-        for key, value in params.items()
-    })
+    values.update({awg_names[key.lower()]: value for key, value in params.items()})
 
     lines = current.splitlines()
     in_interface = False
@@ -508,7 +537,7 @@ def _modify_awg_config(
                 if key in seen:
                     raise ValueError(f"Дублирующийся параметр AWG: {matching}")
                 seen.add(key)
-                indent = line[:len(line) - len(line.lstrip())]
+                indent = line[: len(line) - len(line.lstrip())]
                 output.append(f"{indent}{matching} = {values[matching]}")
                 continue
 
@@ -533,21 +562,16 @@ def _modify_awg_config(
         previous_listen_port=previous_port,
     )
     lines = [
-        line for line in candidate.splitlines()
-        if "ZverTBot-AWG-INPUT" not in line
+        line for line in candidate.splitlines() if "ZverTBot-AWG-INPUT" not in line
     ]
 
     peer_index = next(
-        (
-            index for index, line in enumerate(lines)
-            if line.strip().lower() == "[peer]"
-        ),
+        (index for index, line in enumerate(lines) if line.strip().lower() == "[peer]"),
         len(lines),
     )
-    hooks = (
-        [f"PostUp = {command}" for command in input_up]
-        + [f"PostDown = {command}" for command in input_down]
-    )
+    hooks = [f"PostUp = {command}" for command in input_up] + [
+        f"PostDown = {command}" for command in input_down
+    ]
     if peer_index and lines[peer_index - 1].strip():
         hooks.insert(0, "")
     lines[peer_index:peer_index] = hooks
@@ -577,30 +601,60 @@ def _backup_path(path: Path) -> Path:
     from datetime import datetime, timezone
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    backup = path.with_name(
-        f"{path.name}.bak-{timestamp}-{uuid.uuid4().hex[:6]}"
-    )
+    backup = path.with_name(f"{path.name}.bak-{timestamp}-{uuid.uuid4().hex[:6]}")
     shutil.copy2(path, backup)
     return backup
 
 
-def _apply_xray_transaction(candidate: dict, *, existed: bool) -> str | None:
-    """Проверяет, сохраняет, перезапускает Xray и откатывает при ошибке."""
+def _apply_xray_transaction(
+    candidate: dict,
+    *,
+    existed: bool,
+    old_port: int | None = None,
+) -> str | None:
+    """Атомарно применяет Xray config и соответствующие правила firewall."""
     if not validate_xray_config(candidate):
         raise ValueError("Candidate Xray не прошёл xray run -test")
+
+    inbounds = candidate.get("inbounds")
+    vless = [
+        item
+        for item in inbounds or []
+        if isinstance(item, dict) and item.get("protocol") == "vless"
+    ]
+    if len(vless) != 1:
+        raise ValueError("Для firewall требуется ровно один VLESS inbound")
+
+    new_port = vless[0].get("port")
+    _validate_port(new_port, "VLESS")
 
     backup = _backup_path(XRAY_CONF) if existed else None
     old_state = get_service_state("xray")
 
+    firewall_transaction = xray_firewall.prepare_xray_port_change(old_port, new_port)
+
     try:
         save_xray_config(candidate)
+        verify_listener = False
         if old_state == "active":
             restart_service("xray")
+            verify_listener = True
         elif not existed:
             run_systemctl("start", "xray", timeout=15, check=True)
             if get_service_state("xray") != "active":
                 raise RuntimeError("Xray не перешёл в active после запуска")
+            verify_listener = True
+
+        if verify_listener and not _is_tcp_port_listening(new_port):
+            raise RuntimeError(
+                f"Xray не открыл TCP/{new_port} после применения конфигурации"
+            )
+
+        firewall_transaction.commit()
+
     except Exception as original_error:
+        rollback_errors = []
+
         try:
             if backup:
                 original_content = backup.read_text(encoding="utf-8")
@@ -610,11 +664,18 @@ def _apply_xray_transaction(candidate: dict, *, existed: bool) -> str | None:
             else:
                 XRAY_CONF.unlink(missing_ok=True)
                 run_systemctl("stop", "xray", timeout=15)
-        except Exception as rollback_error:
+        except Exception as exc:
+            rollback_errors.append(f"откат Xray: {exc}")
+
+        try:
+            firewall_transaction.rollback()
+        except Exception as exc:
+            rollback_errors.append(f"откат firewall: {exc}")
+
+        if rollback_errors:
             raise RuntimeError(
-                f"{original_error}; откат Xray также завершился ошибкой: "
-                f"{rollback_error}"
-            ) from rollback_error
+                f"{original_error}; " + "; ".join(rollback_errors)
+            ) from original_error
         raise
 
     return str(backup) if backup else None
@@ -632,9 +693,7 @@ def _apply_awg_transaction(candidate: str, *, existed: bool) -> str | None:
         if old_state == "active":
             restart_service("awg-quick@awg0")
         elif not existed:
-            run_systemctl(
-                "start", "awg-quick@awg0", timeout=15, check=True
-            )
+            run_systemctl("start", "awg-quick@awg0", timeout=15, check=True)
             if get_service_state("awg-quick@awg0") != "active":
                 raise RuntimeError("AWG не перешёл в active после запуска")
     except Exception as original_error:
@@ -672,12 +731,14 @@ def setup_xray_server(
 
         if initial_setup_only and existed:
             return SetupResult(
-                "xray", False,
+                "xray",
+                False,
                 "Первичная настройка отменена: конфигурация уже существует",
             )
         if XRAY_CONF.is_symlink():
             raise ValueError("Перенастройка символьной ссылки запрещена")
 
+        old_port = None
         if existed:
             current = load_xray_config()
             ready, problems = get_xray_readiness(current)
@@ -685,15 +746,27 @@ def setup_xray_server(
                 raise ValueError(
                     "Существующий Xray config не готов: " + "; ".join(problems)
                 )
+
+            current_inbounds = current.get("inbounds")
+            current_vless = [
+                item
+                for item in current_inbounds or []
+                if isinstance(item, dict) and item.get("protocol") == "vless"
+            ]
+            if len(current_vless) != 1:
+                raise ValueError(
+                    "Безопасная перенастройка поддерживает ровно один VLESS inbound"
+                )
+
+            old_port = current_vless[0].get("port")
+            _validate_port(old_port, "VLESS")
             candidate = _modify_xray_config(
                 current, port=port, sni=sni, dest=dest, flow=flow
             )
         else:
-            candidate = _build_xray_config(
-                port=port, sni=sni, dest=dest, flow=flow
-            )
+            candidate = _build_xray_config(port=port, sni=sni, dest=dest, flow=flow)
 
-        backup = _apply_xray_transaction(candidate, existed=existed)
+        backup = _apply_xray_transaction(candidate, existed=existed, old_port=old_port)
         action = "перенастроен" if existed else "создан"
         message = f"Xray config {action}: {XRAY_CONF}"
         if backup:
@@ -724,16 +797,25 @@ def setup_awg_server(
     """Создаёт или перенастраивает AWG без смены ключей и peers."""
     try:
         params = {
-            "jc": jc, "jmin": jmin, "jmax": jmax,
-            "s1": s1, "s2": s2, "s3": s3, "s4": s4,
-            "h1": h1, "h2": h2, "h3": h3, "h4": h4,
+            "jc": jc,
+            "jmin": jmin,
+            "jmax": jmax,
+            "s1": s1,
+            "s2": s2,
+            "s3": s3,
+            "s4": s4,
+            "h1": h1,
+            "h2": h2,
+            "h3": h3,
+            "h4": h4,
         }
         _validate_awg_parameters(port, **params)
 
         existed = AWG_CONF.exists() or AWG_CONF.is_symlink()
         if initial_setup_only and existed:
             return SetupResult(
-                "awg", False,
+                "awg",
+                False,
                 "Первичная настройка отменена: конфигурация уже существует",
             )
         if AWG_CONF.is_symlink():
@@ -746,9 +828,7 @@ def setup_awg_server(
                 raise ValueError(
                     "Существующий AWG config не готов: " + "; ".join(problems)
                 )
-            candidate = _modify_awg_config(
-                current, port=port, params=params
-            )
+            candidate = _modify_awg_config(current, port=port, params=params)
         else:
             network_hooks = build_awg_network_hooks(
                 address=AWG_DEFAULT_ADDRESS,
