@@ -130,10 +130,9 @@ def test_process_results_persists_all_states(tmp_path: Path):
     )
 
     assert [update.notify for update in updates] == [False, False]
-    assert load_states(path) == {
-        "zvertbot": MonitorState.UP,
-        "stats-http": MonitorState.DOWN,
-    }
+    loaded = load_states(path)
+    assert loaded == {"zvertbot": MonitorState.UP}
+    assert loaded.checks["stats-http"]["down"] == 1
 
 
 def test_process_results_detects_transitions(tmp_path: Path):
@@ -147,18 +146,21 @@ def test_process_results_detects_transitions(tmp_path: Path):
         path,
     )
 
+    for _ in range(2):
+        updates = process_results(
+            [result("zvertbot", False), result("stats-http", True)],
+            path,
+        )
+        assert updates[0].notify is False
+        assert updates[0].current == MonitorState.UP
+
     updates = process_results(
-        [
-            result("zvertbot", False),
-            result("stats-http", True),
-        ],
+        [result("zvertbot", False), result("stats-http", True)],
         path,
     )
-
     assert updates[0].notify is True
     assert updates[0].previous == MonitorState.UP
     assert updates[0].current == MonitorState.DOWN
-
     assert updates[1].notify is False
 
 
@@ -166,10 +168,15 @@ def test_state_survives_monitor_restart(tmp_path: Path):
     path = tmp_path / "state.json"
 
     process_results([result("zvertbot", False)], path)
+    process_results([result("zvertbot", False)], path)
 
-    # New process/state dictionary.
+    # The third failure confirms DOWN after reloading persisted counters.
     updates = process_results([result("zvertbot", False)], path)
+    assert updates[0].previous is None
+    assert updates[0].current == MonitorState.DOWN
+    assert updates[0].notify is True
 
+    updates = process_results([result("zvertbot", False)], path)
     assert updates[0].previous == MonitorState.DOWN
     assert updates[0].notify is False
 
@@ -177,9 +184,15 @@ def test_state_survives_monitor_restart(tmp_path: Path):
 def test_recovery_after_persisted_down_state(tmp_path: Path):
     path = tmp_path / "state.json"
 
-    process_results([result("zvertbot", False)], path)
-    updates = process_results([result("zvertbot", True)], path)
+    for _ in range(3):
+        process_results([result("zvertbot", False)], path)
 
+    updates = process_results([result("zvertbot", True)], path)
+    assert updates[0].previous == MonitorState.DOWN
+    assert updates[0].current == MonitorState.DOWN
+    assert updates[0].notify is False
+
+    updates = process_results([result("zvertbot", True)], path)
     assert updates[0].previous == MonitorState.DOWN
     assert updates[0].current == MonitorState.UP
     assert updates[0].notify is True

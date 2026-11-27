@@ -8,6 +8,16 @@ from pathlib import Path
 from services.vps_monitor import MonitorFailure, MonitorResult, MonitorState
 
 DEFAULT_STATE_FILE = Path("data/vps_monitor_state.json")
+DOWN_CONFIRMATIONS = 3
+UP_CONFIRMATIONS = 2
+
+
+class MonitorStateMap(dict[str, MonitorState]):
+    """Monitor states with persistent consecutive-check counters."""
+
+    def __init__(self, *args, checks=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.checks = checks if isinstance(checks, dict) else {}
 
 
 @dataclass(frozen=True)
@@ -20,22 +30,28 @@ class StateUpdate:
     details: str = ""
 
 
-def load_states(path: Path = DEFAULT_STATE_FILE) -> dict[str, MonitorState]:
-    """Load persisted monitor states."""
+def load_states(path: Path = DEFAULT_STATE_FILE) -> MonitorStateMap:
+    """Load states and counters; accept the legacy flat JSON format."""
     if not path.exists():
-        return {}
+        return MonitorStateMap()
 
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {}
+        return MonitorStateMap()
 
     if not isinstance(data, dict):
-        return {}
+        return MonitorStateMap()
 
-    states: dict[str, MonitorState] = {}
+    if isinstance(data.get("states"), dict):
+        raw_states = data["states"]
+        raw_checks = data.get("checks", {})
+    else:
+        raw_states = data
+        raw_checks = {}
 
-    for name, value in data.items():
+    states = MonitorStateMap(checks=raw_checks)
+    for name, value in raw_states.items():
         try:
             states[name] = MonitorState(value)
         except (TypeError, ValueError):
@@ -48,10 +64,13 @@ def save_states(
     states: dict[str, MonitorState],
     path: Path = DEFAULT_STATE_FILE,
 ) -> None:
-    """Persist monitor states atomically."""
+    """Persist states and debounce counters atomically."""
     path.parent.mkdir(parents=True, exist_ok=True)
-
-    payload = {name: state.value for name, state in sorted(states.items())}
+    payload = {
+        "version": 2,
+        "states": {name: state.value for name, state in sorted(states.items())},
+        "checks": getattr(states, "checks", {}),
+    }
 
     with tempfile.NamedTemporaryFile(
         mode="w",
@@ -72,26 +91,54 @@ def update_state(
     result: MonitorResult,
     states: dict[str, MonitorState],
 ) -> StateUpdate:
-    """Apply one monitor result and determine whether to notify."""
-    current = MonitorState.UP if result.healthy else MonitorState.DOWN
-
+    """Apply a result with persistent consecutive-check confirmation."""
     previous = states.get(result.name)
+    target = MonitorState.UP if result.healthy else MonitorState.DOWN
 
-    # First observation establishes the baseline silently.
-    if previous is None:
-        notify = False
+    # Plain dict compatibility: first observation establishes a silent baseline.
+    if not isinstance(states, MonitorStateMap):
+        if previous is None:
+            states[result.name] = target
+            return StateUpdate(
+                result.name,
+                None,
+                target,
+                False,
+                result.failure,
+                result.details,
+            )
+        notify = previous != target
+        states[result.name] = target
+        return StateUpdate(
+            result.name, previous, target, notify, result.failure, result.details
+        )
+
+    baseline = previous or MonitorState.UP
+    counters = states.checks.setdefault(result.name, {"up": 0, "down": 0})
+
+    if result.healthy:
+        counters["up"] = int(counters.get("up", 0)) + 1
+        counters["down"] = 0
+        required = UP_CONFIRMATIONS if baseline == MonitorState.DOWN else 1
+        count = counters["up"]
     else:
-        notify = previous != current
+        counters["down"] = int(counters.get("down", 0)) + 1
+        counters["up"] = 0
+        required = DOWN_CONFIRMATIONS if baseline != MonitorState.DOWN else 1
+        count = counters["down"]
 
-    states[result.name] = current
+    confirmed = count >= required
+    current = target if confirmed else baseline
 
+    if confirmed:
+        states[result.name] = target
+
+    notify = confirmed and (
+        (previous is None and target == MonitorState.DOWN)
+        or (previous is not None and previous != target)
+    )
     return StateUpdate(
-        name=result.name,
-        previous=previous,
-        current=current,
-        notify=notify,
-        failure=result.failure,
-        details=result.details,
+        result.name, previous, current, notify, result.failure, result.details
     )
 
 
@@ -101,9 +148,7 @@ def prepare_results(
 ) -> tuple[list[StateUpdate], dict[str, MonitorState]]:
     """Process results without persisting state."""
     states = load_states(path)
-
     updates = [update_state(result, states) for result in results]
-
     return updates, states
 
 

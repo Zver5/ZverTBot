@@ -208,9 +208,7 @@ def _format_update(
         update.name,
         ("⚙️", update.name),
     )
-    timestamp = datetime.now(ZoneInfo("Europe/Moscow")).strftime(
-        "%d.%m.%Y, %H:%M MSK"
-    )
+    timestamp = datetime.now(ZoneInfo("Europe/Moscow")).strftime("%d.%m.%Y, %H:%M MSK")
 
     lines = [
         f"{icon} <b>Сервис: {html.escape(name)}</b>",
@@ -337,6 +335,7 @@ def _format_update(
     lines.append(f"🕒 Время события: {timestamp}")
     return "\n".join(lines)
 
+
 def _queue_notifications(
     updates: list[StateUpdate],
     categories: dict[str, MonitorCategory],
@@ -346,8 +345,7 @@ def _queue_notifications(
     pending: list[PendingNotification] = []
 
     if not chats and any(
-        update.notify
-        and categories.get(update.name) != MonitorCategory.DATA_COLLECTOR
+        update.notify and categories.get(update.name) != MonitorCategory.DATA_COLLECTOR
         for update in updates
     ):
         raise RuntimeError("Neither ADMIN_CHATS nor ADMIN_CHAT is configured")
@@ -375,6 +373,45 @@ def _queue_notifications(
         pending,
         DEFAULT_NOTIFICATION_STATE_FILE,
     )
+
+
+def _queue_reminders(
+    reminders: list[dict], categories: dict[str, MonitorCategory]
+) -> None:
+    pending = []
+    eligible = [
+        incident
+        for incident in reminders
+        if categories.get(incident["service"])
+        in {MonitorCategory.CRITICAL, MonitorCategory.OPTIONAL}
+    ]
+    if not eligible:
+        return
+    chats = _admin_chats()
+    if not chats:
+        raise RuntimeError("Neither ADMIN_CHATS nor ADMIN_CHAT is configured")
+    for incident in eligible:
+        service = incident["service"]
+        if categories.get(service) not in {
+            MonitorCategory.CRITICAL,
+            MonitorCategory.OPTIONAL,
+        }:
+            continue
+        icon, name = SERVICE_DISPLAY.get(service, ("⚙️", service))
+        started = datetime.fromisoformat(incident["started_at"])
+        duration = max(0, int((datetime.now(started.tzinfo) - started).total_seconds()))
+        hours, remainder = divmod(duration, 3600)
+        minutes = remainder // 60
+        message = (
+            f"⚠️ <b>Напоминание: {icon} {html.escape(name)}</b>\n"
+            f"🔴 Инцидент всё ещё продолжается\n"
+            f"⏱ Длительность: {hours} ч {minutes} мин"
+        )
+        for chat_id in chats:
+            pending.append(
+                PendingNotification(chat_id, service, None, message, "reminder")
+            )
+    enqueue_pending_notifications(pending, DEFAULT_NOTIFICATION_STATE_FILE)
 
 
 def _deliver_pending_notifications() -> None:
@@ -422,6 +459,23 @@ def run_once() -> None:
     categories = {result.name: result.category for result in results}
 
     updates, states = prepare_results(results)
+    from services.vps_monitor_incidents import (
+        collect_due_reminders,
+        process_incidents,
+        save_incident_data,
+    )
+
+    incident_data = None
+    try:
+        incident_data = process_incidents(updates)
+        reminders = collect_due_reminders(
+            incident_data, available_services=set(categories)
+        )
+        _queue_reminders(reminders, categories)
+        if reminders:
+            save_incident_data(incident_data)
+    except Exception:
+        logger.exception("vps_monitor.incident_journal_failed")
 
     for update in updates:
         if update.previous is not None and update.current != update.previous:

@@ -12,6 +12,7 @@ from services.vps_monitor_notifications import load_pending_notifications
 from services.vps_monitor_runner import (
     _admin_chats,
     _format_update,
+    _queue_reminders,
     acquire_monitor_lock,
     notify_updates,
     run_once,
@@ -274,7 +275,6 @@ def test_details_are_html_escaped():
     assert "<danger>" not in text
 
 
-
 def test_external_connection_refused_is_explained():
     text = _format_update(
         update(
@@ -415,6 +415,7 @@ def test_recovery_timestamp_uses_human_readable_format(monkeypatch):
     )
 
     assert "13.10.2026, 11:00 MSK" in text
+
 
 def test_notification_requires_admin_chat(monkeypatch, tmp_path: Path):
     monkeypatch.chdir(tmp_path)
@@ -572,9 +573,7 @@ def test_run_once_logs_state_transition():
             "services.vps_monitor_runner.prepare_results",
             return_value=(updates, {"stats-http": MonitorState.DOWN}),
         ):
-            with patch(
-                "services.vps_monitor_runner._queue_notifications"
-            ):
+            with patch("services.vps_monitor_runner._queue_notifications"):
                 with patch(
                     "services.vps_monitor_runner._deliver_pending_notifications"
                 ):
@@ -620,15 +619,11 @@ def test_run_once_checks_processes_and_notifies(monkeypatch, tmp_path: Path):
             "services.vps_monitor_runner.prepare_results",
             return_value=(updates, {"zvertbot": MonitorState.DOWN}),
         ) as process:
-            with patch(
-                "services.vps_monitor_runner._queue_notifications"
-            ) as queue:
+            with patch("services.vps_monitor_runner._queue_notifications") as queue:
                 with patch(
                     "services.vps_monitor_runner._deliver_pending_notifications"
                 ) as deliver:
-                    with patch(
-                        "services.vps_monitor_runner.save_states"
-                    ) as save:
+                    with patch("services.vps_monitor_runner.save_states") as save:
                         run_once()
 
     check.assert_called_once()
@@ -770,11 +765,8 @@ def test_recovery_notification_is_independent_from_down_delivery(
             {"zvertbot": MonitorCategory.CRITICAL},
         )
 
-    assert send.call_count == 2
-    assert [call.args[0] for call in send.call_args_list] == [
-        "111",
-        "111",
-    ]
+    # The DOWN alert was never delivered; recovery makes it stale.
+    assert send.call_count == 0
 
 
 def test_telegram_failure_does_not_change_state_logic(tmp_path, monkeypatch):
@@ -842,3 +834,75 @@ def test_telegram_failure_does_not_change_state_logic(tmp_path, monkeypatch):
         "save",
         {"zvertbot": MonitorState.DOWN},
     )
+
+
+def test_data_collector_reminders_are_ignored_without_admin_chat(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ADMIN_CHAT", raising=False)
+    monkeypatch.delenv("ADMIN_CHATS", raising=False)
+    _queue_reminders(
+        [
+            {
+                "service": "xray-traffic-collect",
+                "started_at": "2026-11-27T12:00:00+00:00",
+            }
+        ],
+        {"xray-traffic-collect": MonitorCategory.DATA_COLLECTOR},
+    )
+    assert load_pending_notifications() == []
+
+
+def test_reminders_are_deduplicated_per_chat(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ADMIN_CHAT", "123")
+    incident = {"service": "zvertbot", "started_at": "2026-11-27T12:00:00+00:00"}
+    categories = {"zvertbot": MonitorCategory.CRITICAL}
+    _queue_reminders([incident], categories)
+    _queue_reminders([incident], categories)
+    pending = load_pending_notifications()
+    assert len(pending) == 1
+    assert pending[0].kind == "reminder"
+    assert pending[0].state is None
+
+
+def test_recovery_cancels_pending_reminder(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ADMIN_CHAT", "123")
+    _queue_reminders(
+        [{"service": "zvertbot", "started_at": "2026-11-27T12:00:00+00:00"}],
+        {"zvertbot": MonitorCategory.CRITICAL},
+    )
+    with patch("services.vps_monitor_runner._telegram_send") as send:
+        notify_updates(
+            [update("zvertbot", MonitorState.DOWN, MonitorState.UP)],
+            {"zvertbot": MonitorCategory.CRITICAL},
+        )
+    send.assert_called_once()
+    assert "Работа восстановлена" in send.call_args.args[1]
+    assert load_pending_notifications() == []
+
+
+def test_failed_reminder_delivery_is_retried(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ADMIN_CHAT", "123")
+    _queue_reminders(
+        [{"service": "zvertbot", "started_at": "2026-11-27T12:00:00+00:00"}],
+        {"zvertbot": MonitorCategory.CRITICAL},
+    )
+
+    with patch(
+        "services.vps_monitor_runner._telegram_send",
+        side_effect=RuntimeError("Telegram unavailable"),
+    ):
+        notify_updates([], {})
+
+    pending = load_pending_notifications()
+    assert len(pending) == 1
+    assert pending[0].kind == "reminder"
+    assert pending[0].state is None
+
+    with patch("services.vps_monitor_runner._telegram_send") as send:
+        notify_updates([], {})
+
+    send.assert_called_once_with("123", pending[0].message)
+    assert load_pending_notifications() == []
