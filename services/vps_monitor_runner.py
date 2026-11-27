@@ -452,8 +452,46 @@ def notify_updates(
     _deliver_pending_notifications()
 
 
+def _process_cheburcheck() -> None:
+    """Run the independent IP check and persist transition notifications."""
+    from services.cheburcheck_monitor import (
+        check_due,
+        clear_pending_notification,
+    )
+
+    state = check_due()
+    pending = state.get("pending_notification")
+    if not isinstance(pending, dict):
+        return
+
+    chats = _admin_chats()
+    if not chats:
+        # Keep the event in Cheburcheck state until an admin chat is configured.
+        return
+
+    notification_state = MonitorState(pending["state"])
+    notifications = [
+        PendingNotification(
+            chat_id=chat_id,
+            service="cheburcheck-ip",
+            state=notification_state,
+            message=pending["message"],
+        )
+        for chat_id in chats
+    ]
+
+    # Clear the source event only after the durable queue has saved it.
+    enqueue_pending_notifications(notifications, DEFAULT_NOTIFICATION_STATE_FILE)
+    clear_pending_notification()
+
+
 def run_once() -> None:
     """Run one complete monitoring cycle."""
+    try:
+        _process_cheburcheck()
+    except Exception:
+        logger.exception("vps_monitor.cheburcheck_check_failed")
+
     results = check_all()
 
     categories = {result.name: result.category for result in results}

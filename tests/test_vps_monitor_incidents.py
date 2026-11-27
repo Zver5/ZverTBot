@@ -140,3 +140,31 @@ def test_missing_service_does_not_advance_reminder_schedule():
     assert datetime.fromisoformat(incident["next_reminder_at"]) == started + timedelta(
         hours=2
     )
+
+
+def test_confirmed_up_closes_active_incident_without_notification(tmp_path: Path):
+    path = tmp_path / "incidents.json"
+    process_incidents([transition(None, MonitorState.DOWN)], path)
+
+    data = process_incidents(
+        [transition(MonitorState.UP, MonitorState.UP, notify=False)],
+        path,
+    )
+
+    assert data["active"] == {}
+    assert len(data["history"]) == 1
+    assert data["history"][0]["recovered_at"]
+    assert data["history"][0]["duration_seconds"] >= 0
+
+
+def test_unconfirmed_down_does_not_create_incident(tmp_path: Path):
+    path = tmp_path / "incidents.json"
+
+    data = process_incidents(
+        [transition(MonitorState.UP, MonitorState.UP, notify=False)],
+        path,
+    )
+
+    assert data["active"] == {}
+    assert data["history"] == []
+    assert not path.exists()

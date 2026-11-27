@@ -108,6 +108,30 @@ def process_incidents(
     changed = False
 
     for update in updates:
+        active = data["active"].get(update.name)
+
+        # A confirmed UP state closes an active incident even when no
+        # notification transition is needed (for example, after a restart).
+        if update.current == MonitorState.UP and active is not None:
+            now = _now()
+            try:
+                started = datetime.fromisoformat(active["started_at"])
+                duration = max(0, int((now - started).total_seconds()))
+            except (KeyError, TypeError, ValueError):
+                duration = 0
+
+            closed = {
+                **active,
+                "recovered_at": now.isoformat(),
+                "duration_seconds": duration,
+                "recovery_details": update.details or "",
+            }
+            data["history"].append(closed)
+            data["history"] = data["history"][-MAX_CLOSED_INCIDENTS:]
+            del data["active"][update.name]
+            changed = True
+            continue
+
         if not update.notify:
             continue
 
@@ -128,25 +152,6 @@ def process_incidents(
             }
             changed = True
             continue
-
-        if update.current == MonitorState.UP and active is not None:
-            try:
-                started = datetime.fromisoformat(active["started_at"])
-                duration = max(0, int((now - started).total_seconds()))
-            except (KeyError, TypeError, ValueError):
-                started = now
-                duration = 0
-
-            closed = {
-                **active,
-                "recovered_at": now.isoformat(),
-                "duration_seconds": duration,
-                "recovery_details": update.details or "",
-            }
-            data["history"].append(closed)
-            data["history"] = data["history"][-MAX_CLOSED_INCIDENTS:]
-            del data["active"][update.name]
-            changed = True
 
     if changed:
         _save(data, path)

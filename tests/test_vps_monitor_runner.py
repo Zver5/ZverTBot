@@ -906,3 +906,58 @@ def test_failed_reminder_delivery_is_retried(monkeypatch, tmp_path):
 
     send.assert_called_once_with("123", pending[0].message)
     assert load_pending_notifications() == []
+
+
+def test_process_cheburcheck_queues_and_clears_pending(monkeypatch):
+    from services.vps_monitor_runner import _process_cheburcheck
+
+    pending = {"state": "down", "message": "blocked"}
+    queued = []
+    cleared = []
+
+    monkeypatch.setattr(
+        "services.cheburcheck_monitor.check_due",
+        lambda: {"pending_notification": pending},
+    )
+    monkeypatch.setattr(
+        "services.cheburcheck_monitor.clear_pending_notification",
+        lambda: cleared.append(True),
+    )
+    monkeypatch.setattr(
+        "services.vps_monitor_runner._admin_chats",
+        lambda: ["111", "222"],
+    )
+    monkeypatch.setattr(
+        "services.vps_monitor_runner.enqueue_pending_notifications",
+        lambda items, path: queued.extend(items),
+    )
+
+    _process_cheburcheck()
+
+    assert [item.chat_id for item in queued] == ["111", "222"]
+    assert all(item.service == "cheburcheck-ip" for item in queued)
+    assert all(item.state == MonitorState.DOWN for item in queued)
+    assert all(item.message == "blocked" for item in queued)
+    assert cleared == [True]
+
+
+def test_process_cheburcheck_keeps_pending_without_admin_chats(monkeypatch):
+    from services.vps_monitor_runner import _process_cheburcheck
+
+    cleared = []
+    monkeypatch.setattr(
+        "services.cheburcheck_monitor.check_due",
+        lambda: {"pending_notification": {"state": "down", "message": "blocked"}},
+    )
+    monkeypatch.setattr(
+        "services.cheburcheck_monitor.clear_pending_notification",
+        lambda: cleared.append(True),
+    )
+    monkeypatch.setattr(
+        "services.vps_monitor_runner._admin_chats",
+        lambda: [],
+    )
+
+    _process_cheburcheck()
+
+    assert cleared == []
