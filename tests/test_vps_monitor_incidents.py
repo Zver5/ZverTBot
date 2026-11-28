@@ -168,3 +168,23 @@ def test_unconfirmed_down_does_not_create_incident(tmp_path: Path):
     assert data["active"] == {}
     assert data["history"] == []
     assert not path.exists()
+
+
+def test_skipped_service_removes_active_incident_without_recovery(tmp_path: Path):
+    path = tmp_path / "incidents.json"
+    process_incidents(
+        [
+            StateUpdate(
+                name="xray",
+                previous=None,
+                current=MonitorState.DOWN,
+                notify=True,
+            )
+        ],
+        path,
+    )
+
+    data = process_incidents([], path, skipped_services={"xray"})
+
+    assert data["active"] == {}
+    assert data["history"] == []

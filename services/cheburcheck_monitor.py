@@ -89,16 +89,10 @@ def _notification_message(target, result, blocked):
     return "\n".join(lines)
 
 
-def check_due(
-    path=DEFAULT_STATE_FILE,
-    target=None,
-    now=None,
-    opener=urlopen,
-):
-    """Check the configured VPS IP when due; API failures are not VPS failures."""
+def check_due(path=DEFAULT_STATE_FILE, target=None, now=None, opener=urlopen):
+    """Check VPS IP; API availability is independent from the block status."""
     target = (target if target is not None else os.getenv("SERVER_IP", "")).strip()
     state = _load(path)
-
     if not target:
         return state
 
@@ -112,7 +106,9 @@ def check_due(
             pass
 
     previous_target = state.get("target")
-    previous_blocked = state.get("blocked") if previous_target == target else None
+    same_target = previous_target == target
+    previous_blocked = state.get("blocked") if same_target else None
+    previous_api_status = state.get("api_status") if same_target else None
 
     request = Request(
         f"{API_URL}?{urlencode({'target': target})}",
@@ -137,6 +133,7 @@ def check_due(
                 "last_checked_at": current.isoformat(),
                 "next_check_at": (current + CHECK_INTERVAL).isoformat(),
                 "last_error": None,
+                "api_status": "available",
             }
         )
 
@@ -154,6 +151,18 @@ def check_due(
                 "message": _notification_message(target, payload, blocked),
             }
 
+        if previous_api_status == "unavailable":
+            state.setdefault("pending_api_notifications", []).append(
+                {
+                    "kind": "event",
+                    "message": (
+                        "🟢 <b>Соединение с Cheburcheck восстановлено</b>\n"
+                        f"🌐 IP: <code>{html.escape(target)}</code>\n"
+                        "Автоматическая проверка IP снова работает."
+                    ),
+                }
+            )
+
     except Exception as exc:
         state.update(
             {
@@ -161,17 +170,43 @@ def check_due(
                 "last_attempt_at": current.isoformat(),
                 "next_check_at": (current + RETRY_INTERVAL).isoformat(),
                 "last_error": f"{type(exc).__name__}: {exc}"[:500],
+                "api_status": "unavailable",
             }
         )
+
+        # One notification on transition to unavailable, not on every retry.
+        if previous_api_status != "unavailable":
+            state.setdefault("pending_api_notifications", []).append(
+                {
+                    "kind": "event",
+                    "message": (
+                        "⚠️ <b>Cheburcheck недоступен</b>\n"
+                        f"🌐 IP: <code>{html.escape(target)}</code>\n"
+                        "Не удалось выполнить автоматическую проверку IP. "
+                        "Это <b>не означает, что IP заблокирован</b>.\n"
+                        "Проверьте IP вручную: "
+                        '<a href="https://cheburcheck.ru/">cheburcheck.ru</a>'
+                    ),
+                }
+            )
 
     _save(state, path)
     return state
 
 
 def clear_pending_notification(path=DEFAULT_STATE_FILE):
-    """Clear a transition only after it has entered the durable Telegram queue."""
+    """Clear a block-status transition after it enters the durable Telegram queue."""
     state = _load(path)
     if "pending_notification" not in state:
         return
     state.pop("pending_notification", None)
+    _save(state, path)
+
+
+def clear_pending_api_notifications(path=DEFAULT_STATE_FILE):
+    """Clear API availability events after they enter the durable Telegram queue."""
+    state = _load(path)
+    if "pending_api_notifications" not in state:
+        return
+    state.pop("pending_api_notifications", None)
     _save(state, path)

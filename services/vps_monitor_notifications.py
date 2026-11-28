@@ -50,7 +50,7 @@ def load_pending_notifications(
             and isinstance(message, str)
             and (
                 (kind == "transition" and state in ("up", "down"))
-                or (kind == "reminder" and state is None)
+                or (kind in ("reminder", "event") and state is None)
             )
         )
         if valid:
@@ -119,6 +119,15 @@ def enqueue_pending_notifications(
                 changed = True
             continue
 
+        if item.kind == "event":
+            # Events are independent and deduplicated by their message.
+            if not any(
+                q.kind == "event" and q.message == item.message for q in matching
+            ):
+                pending.append(item)
+                changed = True
+            continue
+
         if item.state == MonitorState.UP and any(
             queued.state == MonitorState.DOWN for queued in matching
         ):
@@ -147,3 +156,18 @@ def enqueue_pending_notifications(
 
     if changed:
         save_pending_notifications(pending, path)
+
+
+def discard_pending_notifications(
+    services: set[str],
+    path: Path | None = None,
+) -> None:
+    """Discard queued notifications for services that are not installed."""
+    if not services:
+        return
+
+    pending = load_pending_notifications(path)
+    remaining = [item for item in pending if item.service not in services]
+
+    if len(remaining) != len(pending):
+        save_pending_notifications(remaining, path)

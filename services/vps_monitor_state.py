@@ -148,7 +148,14 @@ def prepare_results(
 ) -> tuple[list[StateUpdate], dict[str, MonitorState]]:
     """Process results without persisting state."""
     states = load_states(path)
-    updates = [update_state(result, states) for result in results]
+    skipped = {result.name for result in results if result.skipped}
+
+    for name in skipped:
+        states.pop(name, None)
+        if isinstance(states, MonitorStateMap):
+            states.checks.pop(name, None)
+
+    updates = [update_state(result, states) for result in results if not result.skipped]
     return updates, states
 
 

@@ -961,3 +961,117 @@ def test_process_cheburcheck_keeps_pending_without_admin_chats(monkeypatch):
     _process_cheburcheck()
 
     assert cleared == []
+
+
+def test_notification_queue_preserves_api_events_separately(tmp_path):
+    from services.vps_monitor_notifications import (
+        PendingNotification,
+        enqueue_pending_notifications,
+        load_pending_notifications,
+    )
+
+    queue_file = tmp_path / "notifications.json"
+    items = [
+        PendingNotification(
+            chat_id="123",
+            service="cheburcheck-ip",
+            state=None,
+            message="API unavailable",
+            kind="event",
+        ),
+        PendingNotification(
+            chat_id="123",
+            service="cheburcheck-ip",
+            state=None,
+            message="API recovered",
+            kind="event",
+        ),
+        PendingNotification(
+            chat_id="123",
+            service="cheburcheck-ip",
+            state=MonitorState.DOWN,
+            message="IP blocked",
+            kind="transition",
+        ),
+    ]
+
+    enqueue_pending_notifications(items, queue_file)
+    pending = load_pending_notifications(queue_file)
+
+    assert len(pending) == 3
+    assert [(item.kind, item.state, item.message) for item in pending] == [
+        ("event", None, "API unavailable"),
+        ("event", None, "API recovered"),
+        ("transition", MonitorState.DOWN, "IP blocked"),
+    ]
+
+
+def test_process_cheburcheck_queues_api_events_without_vps_state(monkeypatch):
+    from services.vps_monitor_runner import _process_cheburcheck
+
+    api_events = [
+        {"message": "API unavailable"},
+        {"message": "API recovered"},
+    ]
+    queued = []
+    cleared = []
+
+    monkeypatch.setattr(
+        "services.cheburcheck_monitor.check_due",
+        lambda: {"pending_api_notifications": api_events},
+    )
+    monkeypatch.setattr(
+        "services.cheburcheck_monitor.clear_pending_api_notifications",
+        lambda: cleared.append(True),
+    )
+    monkeypatch.setattr(
+        "services.vps_monitor_runner._admin_chats",
+        lambda: ["123"],
+    )
+    monkeypatch.setattr(
+        "services.vps_monitor_runner.enqueue_pending_notifications",
+        lambda items, path: queued.extend(items),
+    )
+
+    _process_cheburcheck()
+
+    assert len(queued) == 2
+    assert all(item.chat_id == "123" for item in queued)
+    assert all(item.service == "cheburcheck-ip" for item in queued)
+    assert all(item.kind == "event" for item in queued)
+    assert all(item.state is None for item in queued)
+    assert [item.message for item in queued] == [
+        "API unavailable",
+        "API recovered",
+    ]
+    assert cleared == [True]
+
+
+def test_skipped_services_discard_their_pending_notifications(tmp_path):
+    from services.vps_monitor import MonitorState
+    from services.vps_monitor_notifications import (
+        PendingNotification,
+        discard_pending_notifications,
+        load_pending_notifications,
+        save_pending_notifications,
+    )
+
+    path = tmp_path / "queue.json"
+    save_pending_notifications(
+        [
+            PendingNotification("1", "xray", MonitorState.DOWN, "old DOWN"),
+            PendingNotification("1", "xray", None, "old reminder", "reminder"),
+            PendingNotification("1", "awg", None, "old event", "event"),
+            PendingNotification("1", "zvertbot", MonitorState.DOWN, "bot DOWN"),
+            PendingNotification("1", "cheburcheck-ip", None, "IP event", "event"),
+        ],
+        path,
+    )
+
+    discard_pending_notifications({"xray", "awg"}, path)
+
+    remaining = load_pending_notifications(path)
+    assert {(item.service, item.message) for item in remaining} == {
+        ("zvertbot", "bot DOWN"),
+        ("cheburcheck-ip", "IP event"),
+    }

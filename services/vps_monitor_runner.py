@@ -456,33 +456,53 @@ def _process_cheburcheck() -> None:
     """Run the independent IP check and persist transition notifications."""
     from services.cheburcheck_monitor import (
         check_due,
+        clear_pending_api_notifications,
         clear_pending_notification,
     )
 
     state = check_due()
-    pending = state.get("pending_notification")
-    if not isinstance(pending, dict):
+    block_pending = state.get("pending_notification")
+    api_pending = state.get("pending_api_notifications", [])
+
+    events = []
+    if isinstance(block_pending, dict):
+        events.append(("transition", block_pending))
+    if isinstance(api_pending, list):
+        events.extend(("event", item) for item in api_pending if isinstance(item, dict))
+
+    if not events:
         return
 
     chats = _admin_chats()
     if not chats:
-        # Keep the event in Cheburcheck state until an admin chat is configured.
+        # Keep source events until an admin chat is configured.
         return
 
-    notification_state = MonitorState(pending["state"])
-    notifications = [
-        PendingNotification(
-            chat_id=chat_id,
-            service="cheburcheck-ip",
-            state=notification_state,
-            message=pending["message"],
+    notifications = []
+    for kind, item in events:
+        raw_state = item.get("state")
+        notification_state = (
+            MonitorState(raw_state)
+            if raw_state in (MonitorState.UP.value, MonitorState.DOWN.value)
+            else None
         )
-        for chat_id in chats
-    ]
+        notifications.extend(
+            PendingNotification(
+                chat_id=chat_id,
+                service="cheburcheck-ip",
+                state=notification_state,
+                message=item["message"],
+                kind=kind,
+            )
+            for chat_id in chats
+        )
 
-    # Clear the source event only after the durable queue has saved it.
+    # Clear source events only after the durable queue has saved them.
     enqueue_pending_notifications(notifications, DEFAULT_NOTIFICATION_STATE_FILE)
-    clear_pending_notification()
+    if isinstance(block_pending, dict):
+        clear_pending_notification()
+    if isinstance(api_pending, list) and api_pending:
+        clear_pending_api_notifications()
 
 
 def run_once() -> None:
@@ -494,7 +514,17 @@ def run_once() -> None:
 
     results = check_all()
 
-    categories = {result.name: result.category for result in results}
+    skipped_services = {result.name for result in results if result.skipped}
+    if skipped_services:
+        from services.vps_monitor_notifications import (
+            discard_pending_notifications,
+        )
+
+        discard_pending_notifications(skipped_services)
+
+    categories = {
+        result.name: result.category for result in results if not result.skipped
+    }
 
     updates, states = prepare_results(results)
     from services.vps_monitor_incidents import (
@@ -505,7 +535,10 @@ def run_once() -> None:
 
     incident_data = None
     try:
-        incident_data = process_incidents(updates)
+        incident_data = process_incidents(
+            updates,
+            skipped_services=skipped_services,
+        )
         reminders = collect_due_reminders(
             incident_data, available_services=set(categories)
         )

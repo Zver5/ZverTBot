@@ -59,6 +59,7 @@ class MonitorResult:
     healthy: bool
     details: str = ""
     failure: MonitorFailure | None = None
+    skipped: bool = False
 
 
 @dataclass(frozen=True)
@@ -198,9 +199,7 @@ def _write_external_monitor_cache(
     EXTERNAL_MONITOR_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        cache = json.loads(
-            EXTERNAL_MONITOR_CACHE_FILE.read_text(encoding="utf-8")
-        )
+        cache = json.loads(EXTERNAL_MONITOR_CACHE_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         cache = {}
 
@@ -249,10 +248,7 @@ def check_external_monitor(
 
 
 def check_external_monitors() -> list[MonitorResult]:
-    return [
-        check_external_monitor(monitor)
-        for monitor in EXTERNAL_HTTP_MONITORS
-    ]
+    return [check_external_monitor(monitor) for monitor in EXTERNAL_HTTP_MONITORS]
 
 
 def check_long_running_service(
@@ -269,16 +265,21 @@ def check_long_running_service(
         if missing_is_healthy is None:
             missing_is_healthy = category == MonitorCategory.OPTIONAL
 
+        if category == MonitorCategory.OPTIONAL:
+            return MonitorResult(
+                name=name,
+                category=category,
+                healthy=False,
+                details="service not installed",
+                skipped=True,
+            )
+
         return MonitorResult(
             name=name,
             category=category,
-            healthy=missing_is_healthy,
+            healthy=False,
             details="service not installed",
-            failure=(
-                None
-                if missing_is_healthy
-                else MonitorFailure.NOT_INSTALLED
-            ),
+            failure=MonitorFailure.NOT_INSTALLED,
         )
 
     active = _systemctl("is-active", name)
@@ -350,7 +351,6 @@ def check_xray() -> MonitorResult:
     service = check_long_running_service(
         "xray",
         MonitorCategory.OPTIONAL,
-        missing_is_healthy=False,
     )
 
     if not service.healthy:
@@ -383,8 +383,6 @@ def check_xray() -> MonitorResult:
     )
 
 
-
-
 def check_awg_service(
     unit_name: str | None = None,
 ) -> MonitorResult:
@@ -398,7 +396,7 @@ def check_awg_service(
                 category=MonitorCategory.OPTIONAL,
                 healthy=False,
                 details="AWG service not installed",
-                failure=MonitorFailure.NOT_INSTALLED,
+                skipped=True,
             )
 
         units = discover_awg_units()
@@ -491,7 +489,37 @@ def _parse_timestamp(value: str) -> datetime | None:
 def check_backup(
     max_age_seconds: int = 9 * 60 * 60,
 ) -> MonitorResult:
-    """Check the persisted result and freshness of the last backup."""
+    """Check backup only when its systemd timer is installed."""
+    try:
+        timer = _systemctl("list-unit-files", "zvertbot-backup.timer")
+    except (OSError, subprocess.SubprocessError) as exc:
+        return MonitorResult(
+            name="backup",
+            category=MonitorCategory.OPTIONAL,
+            healthy=False,
+            details=f"unable to detect backup timer: {exc}",
+            failure=MonitorFailure.SYSTEMD_FAILED,
+        )
+
+    if timer.returncode != 0:
+        error = getattr(timer, "stderr", "") or "systemctl failed"
+        return MonitorResult(
+            name="backup",
+            category=MonitorCategory.OPTIONAL,
+            healthy=False,
+            details=f"unable to detect backup timer: {error}",
+            failure=MonitorFailure.SYSTEMD_FAILED,
+        )
+
+    if "zvertbot-backup.timer" not in timer.stdout:
+        return MonitorResult(
+            name="backup",
+            category=MonitorCategory.OPTIONAL,
+            healthy=False,
+            details="backup timer not installed",
+            skipped=True,
+        )
+
     try:
         with open(RCLONE_STATUS_JSON, encoding="utf-8") as file:
             status = json.load(file)

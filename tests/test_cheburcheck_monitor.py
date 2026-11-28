@@ -246,3 +246,126 @@ def test_clear_pending_notification_preserves_other_state(tmp_path):
 
     state = json.loads(path.read_text(encoding="utf-8"))
     assert state == {"target": "203.0.113.10", "blocked": True}
+
+
+def test_api_unavailable_creates_one_independent_event_and_preserves_result(tmp_path):
+    path = tmp_path / "state.json"
+    previous_result = {"target": "203.0.113.10", "blocked": True, "details": "known"}
+    path.write_text(
+        json.dumps(
+            {
+                "target": "203.0.113.10",
+                "blocked": True,
+                "last_result": previous_result,
+                "api_status": "available",
+                "next_check_at": "2026-11-27T11:59:59+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    now = datetime(2026, 11, 27, 12, tzinfo=timezone.utc)
+
+    def fail(*args, **kwargs):
+        raise TimeoutError("API timeout")
+
+    state = check_due(path=path, target="203.0.113.10", now=now, opener=fail)
+
+    assert state["api_status"] == "unavailable"
+    assert state["blocked"] is True
+    assert state["last_result"] == previous_result
+    assert len(state["pending_api_notifications"]) == 1
+    message = state["pending_api_notifications"][0]["message"]
+    assert "не означает, что IP заблокирован" in message
+    assert "cheburcheck.ru" in message
+    assert state["next_check_at"] == (now + RETRY_INTERVAL).isoformat()
+
+
+def test_repeated_api_errors_do_not_create_duplicate_events(tmp_path):
+    path = tmp_path / "state.json"
+    now = datetime(2026, 11, 27, 12, tzinfo=timezone.utc)
+
+    def fail(*args, **kwargs):
+        raise TimeoutError("API timeout")
+
+    first = check_due(path=path, target="203.0.113.10", now=now, opener=fail)
+    second = check_due(
+        path=path,
+        target="203.0.113.10",
+        now=now + RETRY_INTERVAL,
+        opener=fail,
+    )
+
+    assert first["api_status"] == "unavailable"
+    assert len(second["pending_api_notifications"]) == 1
+
+
+def test_api_recovery_creates_event_and_keeps_block_status_separate(tmp_path):
+    path = tmp_path / "state.json"
+    now = datetime(2026, 11, 27, 12, tzinfo=timezone.utc)
+
+    def fail(*args, **kwargs):
+        raise TimeoutError("API timeout")
+
+    check_due(path=path, target="203.0.113.10", now=now, opener=fail)
+    state = check_due(
+        path=path,
+        target="203.0.113.10",
+        now=now + RETRY_INTERVAL,
+        opener=call_api({"blocked": False}),
+    )
+
+    assert state["api_status"] == "available"
+    assert state["blocked"] is False
+    assert len(state["pending_api_notifications"]) == 2
+    assert "восстановлено" in state["pending_api_notifications"][-1]["message"]
+
+
+def test_api_recovery_does_not_repeat_after_success(tmp_path):
+    path = tmp_path / "state.json"
+    now = datetime(2026, 11, 27, 12, tzinfo=timezone.utc)
+
+    def fail(*args, **kwargs):
+        raise TimeoutError("API timeout")
+
+    check_due(path=path, target="203.0.113.10", now=now, opener=fail)
+    recovered = check_due(
+        path=path,
+        target="203.0.113.10",
+        now=now + RETRY_INTERVAL,
+        opener=call_api({"blocked": False}),
+    )
+    recovered.pop("pending_api_notifications", None)
+    recovered["next_check_at"] = (now + RETRY_INTERVAL * 2).isoformat()
+    path.write_text(json.dumps(recovered), encoding="utf-8")
+
+    state = check_due(
+        path=path,
+        target="203.0.113.10",
+        now=now + RETRY_INTERVAL * 2,
+        opener=call_api({"blocked": False}),
+    )
+
+    assert state["api_status"] == "available"
+    assert "pending_api_notifications" not in state
+
+
+def test_clear_pending_api_notifications_preserves_block_transition(tmp_path):
+    from services.cheburcheck_monitor import clear_pending_api_notifications
+
+    path = tmp_path / "state.json"
+    path.write_text(
+        json.dumps(
+            {
+                "target": "203.0.113.10",
+                "pending_notification": {"state": "down", "message": "blocked"},
+                "pending_api_notifications": [{"kind": "event", "message": "API down"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    clear_pending_api_notifications(path)
+    state = json.loads(path.read_text(encoding="utf-8"))
+
+    assert "pending_api_notifications" not in state
+    assert state["pending_notification"]["state"] == "down"

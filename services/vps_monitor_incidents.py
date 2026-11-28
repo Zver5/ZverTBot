@@ -102,10 +102,16 @@ def save_incident_data(data: dict, path: Path = DEFAULT_INCIDENT_FILE) -> None:
 def process_incidents(
     updates: list[StateUpdate],
     path: Path = DEFAULT_INCIDENT_FILE,
+    skipped_services: set[str] | None = None,
 ) -> dict:
-    """Record confirmed state transitions without duplicating incidents."""
+    """Record transitions and silently discard incidents for absent services."""
     data = _load(path)
     changed = False
+
+    for name in skipped_services or set():
+        if name in data["active"]:
+            del data["active"][name]
+            changed = True
 
     for update in updates:
         active = data["active"].get(update.name)

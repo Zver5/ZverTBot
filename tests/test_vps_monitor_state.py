@@ -196,3 +196,26 @@ def test_recovery_after_persisted_down_state(tmp_path: Path):
     assert updates[0].previous == MonitorState.DOWN
     assert updates[0].current == MonitorState.UP
     assert updates[0].notify is True
+
+
+def test_skipped_service_does_not_create_state_or_transition(tmp_path: Path):
+    from services.vps_monitor_state import prepare_results
+
+    path = tmp_path / "state.json"
+    save_states({"xray": MonitorState.DOWN}, path)
+
+    updates, states = prepare_results(
+        [
+            MonitorResult(
+                name="xray",
+                category=MonitorCategory.OPTIONAL,
+                healthy=False,
+                skipped=True,
+            )
+        ],
+        path,
+    )
+
+    assert updates == []
+    assert "xray" not in states
+    assert "xray" not in states.checks

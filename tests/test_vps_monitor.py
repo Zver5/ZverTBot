@@ -140,7 +140,7 @@ def test_long_running_inactive_critical_service_is_down(mock_systemctl):
 
 
 @patch("services.vps_monitor._systemctl")
-def test_missing_optional_service_is_healthy(mock_systemctl):
+def test_missing_optional_service_is_skipped(mock_systemctl):
     mock_systemctl.return_value = completed("")
 
     result = check_long_running_service(
@@ -148,8 +148,7 @@ def test_missing_optional_service_is_healthy(mock_systemctl):
         MonitorCategory.OPTIONAL,
     )
 
-    assert result.healthy is True
-    assert result.failure is None
+    assert result.skipped is True
     assert result.details == "service not installed"
 
 
@@ -202,9 +201,7 @@ def test_stats_http_http_failure_is_down(mock_systemctl):
 
 
 def test_normalize_http_url_adds_http_scheme():
-    assert _normalize_http_url("94.45.205.17:8123") == (
-        "http://94.45.205.17:8123"
-    )
+    assert _normalize_http_url("94.45.205.17:8123") == ("http://94.45.205.17:8123")
 
 
 def test_normalize_http_url_preserves_existing_scheme():
@@ -217,9 +214,7 @@ def test_normalize_http_url_preserves_existing_scheme():
 
 
 def test_normalize_http_url_strips_whitespace():
-    assert _normalize_http_url("  94.45.205.17:8123  ") == (
-        "http://94.45.205.17:8123"
-    )
+    assert _normalize_http_url("  94.45.205.17:8123  ") == ("http://94.45.205.17:8123")
 
 
 def test_normalize_http_url_empty():
@@ -466,25 +461,25 @@ def test_xray_port_failure_is_down(mock_systemctl):
 
 
 @patch("services.vps_monitor._systemctl")
-def test_missing_xray_service_is_down(mock_systemctl):
+def test_missing_xray_service_is_skipped(mock_systemctl):
     mock_systemctl.return_value = completed("")
 
     result = check_xray()
 
-    assert result.healthy is False
-    assert result.failure == MonitorFailure.NOT_INSTALLED
+    assert result.skipped is True
+    assert result.failure is None
     assert result.details == "service not installed"
 
 
-def test_awg_without_installation_is_down():
+def test_awg_without_installation_is_skipped():
     with patch(
         "services.vps_monitor.is_awg_installed",
         return_value=False,
     ):
         result = check_awg_service()
 
-    assert result.healthy is False
-    assert result.failure == MonitorFailure.NOT_INSTALLED
+    assert result.skipped is True
+    assert result.failure is None
     assert result.details == "AWG service not installed"
 
 
@@ -526,9 +521,7 @@ def test_xray_config_failure_is_down(mock_systemctl):
 @patch("services.vps_monitor._systemctl")
 @patch("services.vps_monitor.discover_awg_units")
 @patch("services.vps_monitor.get_listening_port")
-def test_awg_active_and_interface_is_healthy(
-    mock_port, mock_discover, mock_systemctl
-):
+def test_awg_active_and_interface_is_healthy(mock_port, mock_discover, mock_systemctl):
     mock_discover.return_value = ["awg-quick@awg1"]
     mock_systemctl.return_value = completed("active\n")
     mock_port.return_value = 58352
@@ -542,19 +535,23 @@ def test_awg_active_and_interface_is_healthy(
 
 
 def test_awg_multiple_units_are_all_checked():
-    with patch(
-        "services.vps_monitor.discover_awg_units",
-        return_value=["awg-quick@awg0", "awg-quick@awg1"],
-    ), patch(
-        "services.vps_monitor._systemctl",
-        side_effect=[
-            completed("active\n"),
-            completed("active\n"),
-        ],
-    ) as mock_systemctl, patch(
-        "services.vps_monitor.get_listening_port",
-        side_effect=[58352, 58353],
-    ) as mock_port:
+    with (
+        patch(
+            "services.vps_monitor.discover_awg_units",
+            return_value=["awg-quick@awg0", "awg-quick@awg1"],
+        ),
+        patch(
+            "services.vps_monitor._systemctl",
+            side_effect=[
+                completed("active\n"),
+                completed("active\n"),
+            ],
+        ) as mock_systemctl,
+        patch(
+            "services.vps_monitor.get_listening_port",
+            side_effect=[58352, 58353],
+        ) as mock_port,
+    ):
         result = check_awg_service()
 
     assert result.healthy is True
@@ -567,18 +564,22 @@ def test_awg_multiple_units_are_all_checked():
 
 
 def test_awg_one_failed_unit_makes_aggregate_down():
-    with patch(
-        "services.vps_monitor.discover_awg_units",
-        return_value=["awg-quick@awg0", "awg-quick@awg1"],
-    ), patch(
-        "services.vps_monitor._systemctl",
-        side_effect=[
-            completed("active\n"),
-            completed("failed\n"),
-        ],
-    ), patch(
-        "services.vps_monitor.get_listening_port",
-        return_value=58352,
+    with (
+        patch(
+            "services.vps_monitor.discover_awg_units",
+            return_value=["awg-quick@awg0", "awg-quick@awg1"],
+        ),
+        patch(
+            "services.vps_monitor._systemctl",
+            side_effect=[
+                completed("active\n"),
+                completed("failed\n"),
+            ],
+        ),
+        patch(
+            "services.vps_monitor.get_listening_port",
+            return_value=58352,
+        ),
     ):
         result = check_awg_service()
 
@@ -591,9 +592,7 @@ def test_awg_one_failed_unit_makes_aggregate_down():
 @patch("services.vps_monitor._systemctl")
 @patch("services.vps_monitor.discover_awg_units")
 @patch("services.vps_monitor.get_listening_port")
-def test_awg_interface_failure_is_down(
-    mock_port, mock_discover, mock_systemctl
-):
+def test_awg_interface_failure_is_down(mock_port, mock_discover, mock_systemctl):
     mock_discover.return_value = ["awg-quick@awg2"]
     mock_systemctl.return_value = completed("active\n")
     mock_port.return_value = None
@@ -602,6 +601,30 @@ def test_awg_interface_failure_is_down(
 
     assert result.healthy is False
     assert "unavailable" in result.details
+
+
+def test_backup_timer_detection_command_failure_is_down():
+    with patch(
+        "services.vps_monitor._systemctl",
+        return_value=completed("", 1),
+    ):
+        result = check_backup()
+
+    assert result.healthy is False
+    assert result.skipped is False
+    assert result.failure == MonitorFailure.SYSTEMD_FAILED
+
+
+def test_backup_timer_detection_exception_is_down():
+    with patch(
+        "services.vps_monitor._systemctl",
+        side_effect=OSError("systemctl unavailable"),
+    ):
+        result = check_backup()
+
+    assert result.healthy is False
+    assert result.skipped is False
+    assert result.failure == MonitorFailure.SYSTEMD_FAILED
 
 
 def test_backup_success_and_fresh_is_healthy(tmp_path):
@@ -616,9 +639,15 @@ def test_backup_success_and_fresh_is_healthy(tmp_path):
         encoding="utf-8",
     )
 
-    with patch(
-        "services.vps_monitor.RCLONE_STATUS_JSON",
-        str(status_file),
+    with (
+        patch(
+            "services.vps_monitor._systemctl",
+            return_value=completed("zvertbot-backup.timer enabled\n"),
+        ),
+        patch(
+            "services.vps_monitor.RCLONE_STATUS_JSON",
+            str(status_file),
+        ),
     ):
         result = check_backup()
 
@@ -638,9 +667,15 @@ def test_backup_failed_status_is_down(tmp_path):
         encoding="utf-8",
     )
 
-    with patch(
-        "services.vps_monitor.RCLONE_STATUS_JSON",
-        str(status_file),
+    with (
+        patch(
+            "services.vps_monitor._systemctl",
+            return_value=completed("zvertbot-backup.timer enabled\n"),
+        ),
+        patch(
+            "services.vps_monitor.RCLONE_STATUS_JSON",
+            str(status_file),
+        ),
     ):
         result = check_backup()
 
@@ -661,9 +696,15 @@ def test_backup_stale_is_down(tmp_path):
         encoding="utf-8",
     )
 
-    with patch(
-        "services.vps_monitor.RCLONE_STATUS_JSON",
-        str(status_file),
+    with (
+        patch(
+            "services.vps_monitor._systemctl",
+            return_value=completed("zvertbot-backup.timer enabled\n"),
+        ),
+        patch(
+            "services.vps_monitor.RCLONE_STATUS_JSON",
+            str(status_file),
+        ),
     ):
         result = check_backup(max_age_seconds=9_000)
 
