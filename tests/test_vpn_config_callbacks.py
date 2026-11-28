@@ -77,9 +77,7 @@ def setup_admin(monkeypatch, *, exists=False, protocols=None):
         "get_configurable_protocols",
         lambda: protocols or ["xray", "awg"],
     )
-    monkeypatch.setattr(
-        handler, "protocol_config_exists", lambda _protocol: exists
-    )
+    monkeypatch.setattr(handler, "protocol_config_exists", lambda _protocol: exists)
 
     nav = FakeNavigation()
     monkeypatch.setattr(handler, "navigation", nav)
@@ -119,24 +117,26 @@ def test_xray_selection_loads_existing_inbound_parameters(monkeypatch):
     setup_admin(monkeypatch, exists=True)
 
     config = {
-        "inbounds": [{
-            "protocol": "vless",
-            "port": 8443,
-            "settings": {
-                "clients": [
-                    {"id": "one", "email": "one", "flow": "xtls-rprx-vision"},
-                    {"id": "two", "email": "two", "flow": "xtls-rprx-vision"},
-                ],
-            },
-            "streamSettings": {
-                "network": "tcp",
-                "security": "reality",
-                "realitySettings": {
-                    "dest": "example.org:443",
-                    "serverNames": ["example.org"],
+        "inbounds": [
+            {
+                "protocol": "vless",
+                "port": 8443,
+                "settings": {
+                    "clients": [
+                        {"id": "one", "email": "one", "flow": "xtls-rprx-vision"},
+                        {"id": "two", "email": "two", "flow": "xtls-rprx-vision"},
+                    ],
                 },
-            },
-        }],
+                "streamSettings": {
+                    "network": "tcp",
+                    "security": "reality",
+                    "realitySettings": {
+                        "dest": "example.org:443",
+                        "serverNames": ["example.org"],
+                    },
+                },
+            }
+        ],
     }
     monkeypatch.setattr(handler, "load_xray_config", lambda: config)
 
@@ -153,19 +153,21 @@ def test_xray_selection_loads_existing_inbound_parameters(monkeypatch):
 def test_xray_selection_loads_none_flow(monkeypatch):
     setup_admin(monkeypatch, exists=True)
     config = {
-        "inbounds": [{
-            "protocol": "vless",
-            "port": 443,
-            "settings": {"clients": [{"id": "one", "email": "one"}]},
-            "streamSettings": {
-                "network": "tcp",
-                "security": "reality",
-                "realitySettings": {
-                    "dest": "example.org:443",
-                    "serverNames": ["example.org"],
+        "inbounds": [
+            {
+                "protocol": "vless",
+                "port": 443,
+                "settings": {"clients": [{"id": "one", "email": "one"}]},
+                "streamSettings": {
+                    "network": "tcp",
+                    "security": "reality",
+                    "realitySettings": {
+                        "dest": "example.org:443",
+                        "serverNames": ["example.org"],
+                    },
                 },
-            },
-        }],
+            }
+        ],
     }
     monkeypatch.setattr(handler, "load_xray_config", lambda: config)
 
@@ -190,7 +192,8 @@ def test_xray_selection_rejects_multiple_vless_inbounds(monkeypatch):
         },
     }
     monkeypatch.setattr(
-        handler, "load_xray_config",
+        handler,
+        "load_xray_config",
         lambda: {"inbounds": [inbound, dict(inbound)]},
     )
 
@@ -201,24 +204,26 @@ def test_xray_selection_rejects_multiple_vless_inbounds(monkeypatch):
 def test_xray_selection_rejects_mixed_client_flows(monkeypatch):
     setup_admin(monkeypatch, exists=True)
     config = {
-        "inbounds": [{
-            "protocol": "vless",
-            "port": 443,
-            "settings": {
-                "clients": [
-                    {"id": "one", "email": "one", "flow": "xtls-rprx-vision"},
-                    {"id": "two", "email": "two", "flow": ""},
-                ],
-            },
-            "streamSettings": {
-                "network": "tcp",
-                "security": "reality",
-                "realitySettings": {
-                    "dest": "example.org:443",
-                    "serverNames": ["example.org"],
+        "inbounds": [
+            {
+                "protocol": "vless",
+                "port": 443,
+                "settings": {
+                    "clients": [
+                        {"id": "one", "email": "one", "flow": "xtls-rprx-vision"},
+                        {"id": "two", "email": "two", "flow": ""},
+                    ],
                 },
-            },
-        }],
+                "streamSettings": {
+                    "network": "tcp",
+                    "security": "reality",
+                    "realitySettings": {
+                        "dest": "example.org:443",
+                        "serverNames": ["example.org"],
+                    },
+                },
+            }
+        ],
     }
     monkeypatch.setattr(handler, "load_xray_config", lambda: config)
 
@@ -309,9 +314,7 @@ def test_review_moves_to_confirmation_without_setup(monkeypatch):
     )
 
     select_protocol(bot)
-    handler.handle_vpn_config_callback(
-        bot, 501, make_call(), "vpn_config:review:xray"
-    )
+    handler.handle_vpn_config_callback(bot, 501, make_call(), "vpn_config:review:xray")
 
     assert calls == []
     assert ("go", 501, handler.ADMIN_VPN_CONFIG_CONFIRM) in nav.calls
@@ -371,9 +374,7 @@ def test_confirm_aborts_if_config_state_changed(monkeypatch):
     select_protocol(bot)
     state["exists"] = True
 
-    handler.handle_vpn_config_callback(
-        bot, 501, make_call(), "vpn_config:confirm:xray"
-    )
+    handler.handle_vpn_config_callback(bot, 501, make_call(), "vpn_config:confirm:xray")
 
     assert calls == []
     assert handler._DRAFTS.get(("501", "77")) is None
@@ -393,8 +394,7 @@ def test_confirm_runs_setup_with_edited_parameters(monkeypatch):
         handler,
         "setup_xray_server",
         lambda **params: (
-            calls.append(params)
-            or SimpleNamespace(created=True, message="configured")
+            calls.append(params) or SimpleNamespace(created=True, message="configured")
         ),
     )
 
@@ -404,9 +404,7 @@ def test_confirm_runs_setup_with_edited_parameters(monkeypatch):
     draft["params"]["sni"] = "example.org"
     handler._DRAFTS[("501", "77")] = draft
 
-    handler.handle_vpn_config_callback(
-        bot, 501, make_call(), "vpn_config:confirm:xray"
-    )
+    handler.handle_vpn_config_callback(bot, 501, make_call(), "vpn_config:confirm:xray")
 
     assert len(calls) == 1
     assert calls[0]["port"] == 8443

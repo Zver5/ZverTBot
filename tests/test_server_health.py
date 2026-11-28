@@ -211,8 +211,7 @@ def test_collect_server_health_for_ai_appends_monitoring(monkeypatch):
     result = server_health.collect_server_health_for_ai()
 
     assert result == (
-        "HEALTH\n\n=== MONITORING FACTS ===\n"
-        "MONITORING FACT | xray | status=OK"
+        "HEALTH\n\n=== MONITORING FACTS ===\nMONITORING FACT | xray | status=OK"
     )
 
 

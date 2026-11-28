@@ -57,9 +57,7 @@ def test_initial_setup_ignores_uninstalled_protocols(monkeypatch, tmp_path):
     assert status_module.get_initial_setup_protocols() == []
 
 
-def test_initial_setup_treats_broken_symlink_as_existing(
-    monkeypatch, tmp_path
-):
+def test_initial_setup_treats_broken_symlink_as_existing(monkeypatch, tmp_path):
     xray = tmp_path / "xray.json"
     xray.symlink_to(tmp_path / "missing-target.json")
 

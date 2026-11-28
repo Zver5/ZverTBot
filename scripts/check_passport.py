@@ -354,12 +354,8 @@ timer_awg_installed = is_awg_installed(
     discover_awg_interfaces(),
 )
 
-traffic_timer_enabled = run(
-    ["systemctl", "is-enabled", "xray-traffic.timer"]
-)
-traffic_timer_active = run(
-    ["systemctl", "is-active", "xray-traffic.timer"]
-)
+traffic_timer_enabled = run(["systemctl", "is-enabled", "xray-traffic.timer"])
+traffic_timer_active = run(["systemctl", "is-active", "xray-traffic.timer"])
 
 traffic_status = traffic_timer_status(
     timer_xray_installed,
@@ -463,16 +459,14 @@ def port_policy_ok(
 
     def input_accept(proto):
         return any(
-            tokens[1] == "INPUT"
-            and rule_matches(tokens, proto=proto)
+            tokens[1] == "INPUT" and rule_matches(tokens, proto=proto)
             for tokens in rules
             if len(tokens) > 1
         )
 
     def source_accept(source):
         return any(
-            tokens[1] == "INPUT"
-            and rule_matches(tokens, source=source)
+            tokens[1] == "INPUT" and rule_matches(tokens, source=source)
             for tokens in rules
             if len(tokens) > 1
         )
@@ -490,25 +484,16 @@ def port_policy_ok(
     if policy_type == "localhost":
         listening = listening_output()
 
-        has_localhost = (
-            f"127.0.0.1:{port}" in listening
-            or f"[::1]:{port}" in listening
-        )
+        has_localhost = f"127.0.0.1:{port}" in listening or f"[::1]:{port}" in listening
 
-        has_public = (
-            f"0.0.0.0:{port}" in listening
-            or f"[::]:{port}" in listening
-        )
+        has_public = f"0.0.0.0:{port}" in listening or f"[::]:{port}" in listening
 
         return has_localhost and not has_public
 
     if policy_type == "local":
         listening = listening_output()
 
-        if (
-            f"127.0.0.1:{port}" in listening
-            or f"[::1]:{port}" in listening
-        ):
+        if f"127.0.0.1:{port}" in listening or f"[::1]:{port}" in listening:
             return True
 
         return any(source_accept(subnet) for subnet in docker_subnets)
@@ -533,6 +518,7 @@ def port_policy_ok(
         return has_allowed and has_drop
 
     return True
+
 
 def visual_width(text):
     """Возвращает ширину строки в терминале с учётом Unicode/emoji."""
@@ -837,16 +823,29 @@ if rclone_conf.is_file():
 else:
     warn("rclone.conf               НЕ НАЙДЕН — необходимо настроить rclone")
 
-backup_status = run([
-    "systemctl", "show", "zvertbot-backup.service",
-    "-p", "Result", "-p", "ExecMainStatus",
-    "-p", "ExecMainExitTimestamp",
-])
+backup_status = run(
+    [
+        "systemctl",
+        "show",
+        "zvertbot-backup.service",
+        "-p",
+        "Result",
+        "-p",
+        "ExecMainStatus",
+        "-p",
+        "ExecMainExitTimestamp",
+    ]
+)
 
-backup_timer = run([
-    "systemctl", "show", "zvertbot-backup.timer",
-    "-p", "ActiveState",
-])
+backup_timer = run(
+    [
+        "systemctl",
+        "show",
+        "zvertbot-backup.timer",
+        "-p",
+        "ActiveState",
+    ]
+)
 
 section("🔐 XRAY")
 
@@ -864,15 +863,9 @@ if not xray_installed:
     info("Xray                      НЕ УСТАНОВЛЕН")
 else:
     if XRAY_PASSPORT.get("error"):
-        warn(
-            "Xray passport config: не удалось прочитать "
-            f"({XRAY_PASSPORT['error']})"
-        )
+        warn(f"Xray passport config: не удалось прочитать ({XRAY_PASSPORT['error']})")
         print(f"{YELLOW}💡 РЕКОМЕНДАЦИЯ{RESET}")
-        print(
-            f"{YELLOW}   Проверьте XRAY_CONF и наличие "
-            f"конфигурации Xray.{RESET}"
-        )
+        print(f"{YELLOW}   Проверьте XRAY_CONF и наличие конфигурации Xray.{RESET}")
 
     if XRAY_CONF.exists():
         xray_binary_path = xray_binary or "/usr/local/bin/xray"
@@ -892,9 +885,7 @@ else:
             fail("Xray configuration         НЕКОРРЕКТНО")
 
             error_lines = [
-                line.strip()
-                for line in xray_test.splitlines()
-                if line.strip()
+                line.strip() for line in xray_test.splitlines() if line.strip()
             ]
             error_line = error_lines[-1] if error_lines else "неизвестная ошибка"
 
@@ -904,30 +895,19 @@ else:
             lowered = xray_test.lower()
 
             if "reality" in lowered and "password" in lowered:
-                recommendation = (
-                    "Проверьте REALITY password в конфигурации Xray."
-                )
+                recommendation = "Проверьте REALITY password в конфигурации Xray."
             elif "reality" in lowered:
-                recommendation = (
-                    "Проверьте параметры REALITY в конфигурации Xray."
-                )
+                recommendation = "Проверьте параметры REALITY в конфигурации Xray."
             elif "failed to build inbound" in lowered:
-                recommendation = (
-                    "Проверьте параметры inbound в конфигурации Xray."
-                )
+                recommendation = "Проверьте параметры inbound в конфигурации Xray."
             else:
-                recommendation = (
-                    "Проверьте конфигурацию Xray и указанную выше ошибку."
-                )
+                recommendation = "Проверьте конфигурацию Xray и указанную выше ошибку."
 
             print(f"{YELLOW}   {recommendation}{RESET}")
     else:
         fail(f"Xray configuration         НЕ НАЙДЕН: {XRAY_CONF}")
         print(f"{YELLOW}💡 РЕКОМЕНДАЦИЯ{RESET}")
-        print(
-            f"{YELLOW}   Проверьте XRAY_CONF и наличие "
-            f"конфигурации Xray.{RESET}"
-        )
+        print(f"{YELLOW}   Проверьте XRAY_CONF и наличие конфигурации Xray.{RESET}")
 
     if run(["systemctl", "is-active", "xray.service"]) == "active":
         ok("Xray service               РАБОТАЕТ")
@@ -985,9 +965,7 @@ else:
             fail(f"{iface} интерфейс НЕ АКТИВЕН или не существует")
 
             service = f"awg-quick@{iface}.service"
-            service_state = run(
-                ["systemctl", "is-active", service]
-            ).strip()
+            service_state = run(["systemctl", "is-active", service]).strip()
 
             print(f"{YELLOW}💡 РЕКОМЕНДАЦИЯ{RESET}")
 
@@ -1132,9 +1110,7 @@ for name, path in [
         mtime = path.stat().st_mtime
         age = max(0, int(time.time() - mtime))
         modified_at = (
-            datetime.fromtimestamp(mtime)
-            .astimezone()
-            .strftime("%d.%m.%Y %H:%M:%S")
+            datetime.fromtimestamp(mtime).astimezone().strftime("%d.%m.%Y %H:%M:%S")
         )
 
         if age < 3600:

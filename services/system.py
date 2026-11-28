@@ -171,9 +171,9 @@ def get_service_logs(service_name):
                     outputs.append(f"{interface}: интерфейс не отвечает.")
                     continue
 
-                data = re.compile(
-                    r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])"
-                ).sub("", data)
+                data = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])").sub(
+                    "", data
+                )
 
                 outputs.append(f"AWG {interface}:" + NL + data)
 

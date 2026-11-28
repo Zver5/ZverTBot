@@ -413,8 +413,7 @@ class TestAnalyzeLogsWithLLM:
         user_prompt = payload["messages"][1]["content"]
 
         assert result == (
-            "🤖 AI-анализ логов server:\n\n"
-            "Найдена подтверждённая проблема."
+            "🤖 AI-анализ логов server:\n\nНайдена подтверждённая проблема."
         )
         assert "MONITORING FACTS" in user_prompt
         assert "status=FAIL" in user_prompt

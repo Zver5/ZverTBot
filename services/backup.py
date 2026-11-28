@@ -43,16 +43,15 @@ def format_msk_time(iso_time: str) -> str:
         return iso_time
 
 
-
 def format_backup_size(status: dict) -> str:
     """Форматирует размер архива по точному количеству байтов."""
     try:
         if status.get("size_bytes") is not None:
             size = int(status["size_bytes"])
-            if size >= 1024 ** 3:
-                return f"{size / (1024 ** 3):.2f} GB"
-            if size >= 1024 ** 2:
-                return f"{size / (1024 ** 2):.1f} MB"
+            if size >= 1024**3:
+                return f"{size / (1024**3):.2f} GB"
+            if size >= 1024**2:
+                return f"{size / (1024**2):.1f} MB"
             if size >= 1024:
                 return f"{size / 1024:.1f} KB"
             return f"{size} B"

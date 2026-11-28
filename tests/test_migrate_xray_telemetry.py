@@ -45,13 +45,15 @@ def test_migrate_skips_template_and_defers_restart(monkeypatch, tmp_path):
     monkeypatch.setattr(migration.shutil, "which", lambda _: "/usr/local/bin/xray")
     monkeypatch.setattr(migration, "load_xray_config", lambda: {})
     monkeypatch.setattr(
-        migration, "get_xray_readiness",
+        migration,
+        "get_xray_readiness",
         lambda _: (False, ["privateKey is missing"]),
     )
 
     calls = []
     monkeypatch.setattr(
-        migration.subprocess, "run",
+        migration.subprocess,
+        "run",
         lambda *args, **kwargs: calls.append(args),
     )
 
@@ -70,13 +72,15 @@ def test_migrate_does_not_restart_when_save_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(migration, "normalize_xray_api_config", lambda _: {"new": True})
     monkeypatch.setattr(migration, "create_backup", lambda: "backup.json")
     monkeypatch.setattr(
-        migration, "save_xray_config",
+        migration,
+        "save_xray_config",
         lambda _: (_ for _ in ()).throw(ValueError("validation failed")),
     )
 
     calls = []
     monkeypatch.setattr(
-        migration.subprocess, "run",
+        migration.subprocess,
+        "run",
         lambda *args, **kwargs: calls.append(args),
     )
 
@@ -104,7 +108,8 @@ def test_migrate_is_idempotent(monkeypatch, tmp_path):
 
     calls = []
     monkeypatch.setattr(
-        migration.subprocess, "run",
+        migration.subprocess,
+        "run",
         lambda *args, **kwargs: calls.append(args),
     )
 

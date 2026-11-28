@@ -57,16 +57,19 @@ def normalize_xray_api_config(config: dict) -> dict:
 
     # Убираем старые/дублирующиеся API inbound и добавляем канонический.
     normalized["inbounds"] = [
-        item for item in inbounds
+        item
+        for item in inbounds
         if not (isinstance(item, dict) and item.get("tag") == "api")
     ]
-    normalized["inbounds"].append({
-        "listen": "127.0.0.1",
-        "port": 10085,
-        "protocol": "dokodemo-door",
-        "settings": {"address": "127.0.0.1"},
-        "tag": "api",
-    })
+    normalized["inbounds"].append(
+        {
+            "listen": "127.0.0.1",
+            "port": 10085,
+            "protocol": "dokodemo-door",
+            "settings": {"address": "127.0.0.1"},
+            "tag": "api",
+        }
+    )
 
     normalized["api"] = {
         "tag": "api",
@@ -78,7 +81,8 @@ def normalize_xray_api_config(config: dict) -> dict:
     outbounds = normalized.get("outbounds")
     if isinstance(outbounds, list):
         normalized["outbounds"] = [
-            item for item in outbounds
+            item
+            for item in outbounds
             if not (isinstance(item, dict) and item.get("tag") == "api")
         ]
 
@@ -106,11 +110,13 @@ def normalize_xray_api_config(config: dict) -> dict:
 
         kept_rules.append(rule)
 
-    kept_rules.append({
-        "type": "field",
-        "inboundTag": ["api"],
-        "outboundTag": "api",
-    })
+    kept_rules.append(
+        {
+            "type": "field",
+            "inboundTag": ["api"],
+            "outboundTag": "api",
+        }
+    )
     routing["rules"] = kept_rules
 
     # Включаем пользовательскую статистику для уровней VLESS-клиентов.

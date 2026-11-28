@@ -109,13 +109,11 @@ def build_awg_network_hooks(
         ),
     )
 
-
     return AwgNetworkHooks(
         wan_interface=wan,
         post_up=post_up,
         post_down=post_down,
     )
-
 
 
 def build_awg_input_firewall_hooks(
@@ -128,8 +126,7 @@ def build_awg_input_firewall_hooks(
         ports.add(previous_listen_port)
 
     if any(
-        isinstance(port, bool) or not isinstance(port, int)
-        or not 1 <= port <= 65535
+        isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535
         for port in ports
     ):
         raise ValueError("Некорректный UDP-порт AWG")

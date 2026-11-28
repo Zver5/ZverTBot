@@ -190,14 +190,10 @@ def test_awg_empty_output(mock_run, mock_discover, monkeypatch):
 
 @patch("services.system.discover_awg_units")
 @patch("services.system.subprocess.run")
-def test_awg_success_strips_ansi(
-    mock_run, mock_discover, monkeypatch
-):
+def test_awg_success_strips_ansi(mock_run, mock_discover, monkeypatch):
     monkeypatch.setattr("services.system.is_awg_installed", lambda: True)
     mock_discover.return_value = ["awg-quick@awg0"]
-    mock_run.return_value = Mock(
-        stdout="\x1b[32minterface: awg0\x1b[0m\npeer: test"
-    )
+    mock_run.return_value = Mock(stdout="\x1b[32minterface: awg0\x1b[0m\npeer: test")
 
     text = get_service_logs("awg")
 
@@ -210,9 +206,7 @@ def test_awg_success_strips_ansi(
 
 @patch("services.system.discover_awg_units")
 @patch("services.system.subprocess.run")
-def test_awg_exception(
-    mock_run, mock_discover, monkeypatch
-):
+def test_awg_exception(mock_run, mock_discover, monkeypatch):
     monkeypatch.setattr("services.system.is_awg_installed", lambda: True)
     mock_discover.return_value = ["awg-quick@awg0"]
     mock_run.side_effect = Exception("awg failed")

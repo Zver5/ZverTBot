@@ -63,8 +63,6 @@ def test_build_status_unknown_service_state(monkeypatch, tmp_path):
     assert "не установлен" in result
 
 
-
-
 def test_status_text_calls_builder_each_time(monkeypatch):
 
     fake = Mock(return_value="OK")

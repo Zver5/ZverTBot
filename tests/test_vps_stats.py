@@ -56,12 +56,12 @@ def test_get_services_status_detects_active_services():
     with patch.object(module.subprocess, "run", side_effect=fake_run):
         result = module.get_services_status()
 
-    assert result["xray"]["status"] == 1
-    assert result["stats-http"]["status"] == 1
-    assert result["zvertbot"]["status"] == 1
-    assert result["fail2ban"]["status"] == 1
-    assert result["awg-quick@awg0"]["status"] == 1
-    assert result["awg-quick@awg2"]["status"] == 1
+    assert result["xray.service"]["status"] == 1
+    assert result["stats-http.service"]["status"] == 1
+    assert result["zvertbot.service"]["status"] == 1
+    assert result["fail2ban.service"]["status"] == 1
+    assert result["awg-quick@awg0.service"]["status"] == 1
+    assert result["awg-quick@awg2.service"]["status"] == 1
 
 
 def test_get_services_status_marks_missing_service():
@@ -72,7 +72,7 @@ def test_get_services_status_marks_missing_service():
             service = cmd[2]
 
             if service == "xray":
-                    return Mock(returncode=1, stdout="")
+                return Mock(returncode=1, stdout="")
 
             return Mock(returncode=0, stdout=f"{service}\n")
 
@@ -90,10 +90,10 @@ def test_get_services_status_marks_missing_service():
     ):
         result = module.get_services_status()
 
-    assert result["xray"]["status"] == -1
-    assert result["stats-http"]["status"] == 1
-    assert result["zvertbot"]["status"] == 1
-    assert result["fail2ban"]["status"] == 1
+    assert result["xray.service"]["status"] == -1
+    assert result["stats-http.service"]["status"] == 1
+    assert result["zvertbot.service"]["status"] == 1
+    assert result["fail2ban.service"]["status"] == 1
     assert "awg" not in result
 
 
@@ -109,10 +109,10 @@ def test_get_services_status_handles_systemctl_error():
     ):
         result = module.get_services_status()
 
-    assert result["xray"]["status"] == -1
-    assert result["stats-http"]["status"] == -1
-    assert result["zvertbot"]["status"] == -1
-    assert result["fail2ban"]["status"] == -1
+    assert result["xray.service"]["status"] == -1
+    assert result["stats-http.service"]["status"] == -1
+    assert result["zvertbot.service"]["status"] == -1
+    assert result["fail2ban.service"]["status"] == -1
     assert "awg" not in result
 
 
@@ -146,8 +146,8 @@ def test_get_services_status_reports_installed_awg_without_instance():
     ):
         result = module.get_services_status()
 
-    assert result["awg"]["status"] == 0
-    assert result["awg"]["uptime"] is None
+    assert result["awg-quick@awg0.service"]["status"] == 0
+    assert result["awg-quick@awg0.service"]["uptime"] is None
 
 
 def test_get_services_status_marks_inactive_service():
@@ -172,10 +172,10 @@ def test_get_services_status_marks_inactive_service():
     with patch.object(module.subprocess, "run", side_effect=fake_run):
         result = module.get_services_status()
 
-    assert result["xray"]["status"] == 0
-    assert result["stats-http"]["status"] == 1
-    assert result["zvertbot"]["status"] == 1
-    assert result["fail2ban"]["status"] == 1
+    assert result["xray.service"]["status"] == 0
+    assert result["stats-http.service"]["status"] == 1
+    assert result["zvertbot.service"]["status"] == 1
+    assert result["fail2ban.service"]["status"] == 1
 
 
 def test_fail2ban_dynamic_jail_uses_argument_list_without_shell():
@@ -386,8 +386,8 @@ def test_get_services_status_reports_uptime_for_active_service(monkeypatch):
 
     result = module.get_services_status()
 
-    assert result["xray"]["status"] == 1
-    assert result["xray"]["uptime"] == "10д 20ч"
+    assert result["xray.service"]["status"] == 1
+    assert result["xray.service"]["uptime"] == "10д 20ч"
 
 
 def test_get_services_status_uptime_returns_minutes(monkeypatch):
@@ -410,8 +410,8 @@ def test_get_services_status_uptime_returns_minutes(monkeypatch):
 
     result = module.get_services_status()
 
-    assert result["xray"]["status"] == 1
-    assert result["xray"]["uptime"] == "5м"
+    assert result["xray.service"]["status"] == 1
+    assert result["xray.service"]["uptime"] == "5м"
 
 
 def test_get_services_status_uptime_returns_none_for_invalid_timestamp(monkeypatch):
@@ -428,8 +428,8 @@ def test_get_services_status_uptime_returns_none_for_invalid_timestamp(monkeypat
 
     result = module.get_services_status()
 
-    assert result["xray"]["status"] == -1
-    assert result["xray"]["uptime"] is None
+    assert result["xray.service"]["status"] == -1
+    assert result["xray.service"]["uptime"] is None
 
 
 def test_get_services_status_uptime_returns_none_for_zero_timestamp(monkeypatch):
@@ -450,8 +450,8 @@ def test_get_services_status_uptime_returns_none_for_zero_timestamp(monkeypatch)
 
     result = module.get_services_status()
 
-    assert result["xray"]["status"] == 1
-    assert result["xray"]["uptime"] is None
+    assert result["xray.service"]["status"] == 1
+    assert result["xray.service"]["uptime"] is None
 
 
 def test_get_services_status_discovers_multiple_awg_units(monkeypatch):
@@ -479,8 +479,8 @@ def test_get_services_status_discovers_multiple_awg_units(monkeypatch):
 
     result = module.get_services_status()
 
-    assert result["awg-quick@awg0"]["status"] == 1
-    assert result["awg-quick@awg3"]["status"] == 1
+    assert result["awg-quick@awg0.service"]["status"] == 1
+    assert result["awg-quick@awg3.service"]["status"] == 1
 
 
 def test_awg_parser_maps_peer_config_to_live_data(monkeypatch):
@@ -651,18 +651,26 @@ def test_collect_deduplicates_xray_client_by_uuid(monkeypatch, tmp_path):
             {
                 "port": 443,
                 "protocol": "vless",
-                "settings": {"clients": [{
-                    "email": "ZverX",
-                    "id": "7910ef31-fe3b-4b35-8a8b-b869e61efce8",
-                }]},
+                "settings": {
+                    "clients": [
+                        {
+                            "email": "ZverX",
+                            "id": "7910ef31-fe3b-4b35-8a8b-b869e61efce8",
+                        }
+                    ]
+                },
             },
             {
                 "port": 2096,
                 "protocol": "vless",
-                "settings": {"clients": [{
-                    "email": "ZverX",
-                    "id": "7910ef31-fe3b-4b35-8a8b-b869e61efce8",
-                }]},
+                "settings": {
+                    "clients": [
+                        {
+                            "email": "ZverX",
+                            "id": "7910ef31-fe3b-4b35-8a8b-b869e61efce8",
+                        }
+                    ]
+                },
             },
         ]
     }
@@ -672,13 +680,17 @@ def test_collect_deduplicates_xray_client_by_uuid(monkeypatch, tmp_path):
     module.collect_stats()
 
     matches = [
-        client for client in module.xray_clients_raw
+        client
+        for client in module.xray_clients_raw
         if client["id"] == "7910ef31-fe3b-4b35-8a8b-b869e61efce8"
     ]
-    assert matches == [{
-        "name": "ZverX",
-        "id": "7910ef31-fe3b-4b35-8a8b-b869e61efce8",
-    }]
+    assert matches == [
+        {
+            "name": "ZverX",
+            "id": "7910ef31-fe3b-4b35-8a8b-b869e61efce8",
+        }
+    ]
+
 
 def test_xray_client_uses_last_ip_when_current_ip_missing():
 
@@ -809,6 +821,7 @@ def test_collect_logs_xray_config_error(monkeypatch, caplog, tmp_path):
     assert module.xray_clients_raw == []
     assert "vps_stats.xray_config.load_failed" in caplog.text
     assert "Expecting" in caplog.text or "JSON" in caplog.text
+
 
 def test_collect_logs_rclone_status_error(monkeypatch, caplog):
     import builtins

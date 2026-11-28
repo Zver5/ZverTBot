@@ -95,9 +95,7 @@ def parse_custom_parameters(protocol: str, raw: str, base_params=None) -> dict:
             try:
                 values[key] = int(value, 10)
             except ValueError as exc:
-                raise ValueError(
-                    f"Параметр {key} должен быть целым числом"
-                ) from exc
+                raise ValueError(f"Параметр {key} должен быть целым числом") from exc
 
     port = values["port"]
     if type(port) is not int or not 1 <= port <= 65535:
@@ -252,11 +250,9 @@ def _format_summary(protocol: str, params: dict) -> str:
         f"Порт: <code>{params['port']}</code>",
         f"Адрес сервера: <code>{AWG_DEFAULT_ADDRESS}</code>",
     ]
-    for key in ("jc", "jmin", "jmax", "s1", "s2", "s3", "s4",
-                "h1", "h2", "h3", "h4"):
+    for key in ("jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4"):
         lines.append(f"{key.upper()}: <code>{params[key]}</code>")
     return "\n".join(lines)
-
 
 
 _ACTIVE_USERS = TTLDict(ttl=1800)
@@ -302,19 +298,24 @@ def _parameter_text(protocol, params, error=None):
             "Flow: vision или none."
         )
     else:
-        values = (
-            f"port={params['port']}\n"
-            + "\n".join(
-                f"{key}={params[key]}"
-                for key in (
-                    "jc", "jmin", "jmax", "s1", "s2", "s3", "s4",
-                    "h1", "h2", "h3", "h4",
-                )
+        values = f"port={params['port']}\n" + "\n".join(
+            f"{key}={params[key]}"
+            for key in (
+                "jc",
+                "jmin",
+                "jmax",
+                "s1",
+                "s2",
+                "s3",
+                "s4",
+                "h1",
+                "h2",
+                "h3",
+                "h4",
             )
         )
         explanation = (
-            "Параметры AmneziaWG.\n"
-            f"Адрес сервера фиксирован: {AWG_DEFAULT_ADDRESS}."
+            f"Параметры AmneziaWG.\nАдрес сервера фиксирован: {AWG_DEFAULT_ADDRESS}."
         )
 
     error_text = f"❌ <b>{escape(error)}</b>\n\n" if error else ""
@@ -337,7 +338,9 @@ def _render_params_screen(bot, cid, message_id):
     draft = _DRAFTS.get(key) if key else None
     if not draft:
         return _edit(
-            bot, cid, message_id,
+            bot,
+            cid,
+            message_id,
             "Черновик настройки истёк. Выбери протокол заново.",
             vpn_config_menu_kb(),
         )
@@ -361,7 +364,9 @@ def _render_confirm_screen(bot, cid, message_id):
     draft = _DRAFTS.get(key) if key else None
     if not draft:
         return _edit(
-            bot, cid, message_id,
+            bot,
+            cid,
+            message_id,
             "Черновик настройки истёк. Начни настройку заново.",
             vpn_config_menu_kb(),
         )
@@ -372,14 +377,15 @@ def _render_confirm_screen(bot, cid, message_id):
         "\n\n⚠️ <b>ВНИМАНИЕ: конфигурация уже существует.</b>\n"
         "Будет выполнена перенастройка с сохранением ключей, "
         "идентификаторов и существующих клиентов."
-        if replacing else
-        "\n\nПосле подтверждения будет создан серверный конфиг."
+        if replacing
+        else "\n\nПосле подтверждения будет создан серверный конфиг."
     )
     return _edit(
         bot,
         cid,
         message_id,
-        _format_summary(protocol, draft["params"]) + warning
+        _format_summary(protocol, draft["params"])
+        + warning
         + "\n\nПроверь параметры перед запуском настройки.",
         vpn_config_confirm_kb(protocol, replacing=replacing),
     )
@@ -389,7 +395,9 @@ def _render_result_screen(bot, cid, message_id):
     result = _RESULTS.get(str(cid))
     if not result:
         return _edit(
-            bot, cid, message_id,
+            bot,
+            cid,
+            message_id,
             "Результат настройки больше недоступен.",
             vpn_config_result_kb(),
         )
@@ -468,9 +476,7 @@ def handle_vpn_config_callback(bot, cid, call, data):
         return False
 
     if not is_admin(cid):
-        bot.answer_callback_query(
-            call.id, "Недостаточно прав", show_alert=True
-        )
+        bot.answer_callback_query(call.id, "Недостаточно прав", show_alert=True)
         return True
 
     parts = data.split(":")
@@ -511,9 +517,7 @@ def handle_vpn_config_callback(bot, cid, call, data):
         _SCREEN_ERRORS.pop(str(cid), None)
 
         navigation.go(cid, ADMIN_VPN_CONFIG_PARAMS)
-        navigation.render(
-            ADMIN_VPN_CONFIG_PARAMS, bot, cid, message_id
-        )
+        navigation.render(ADMIN_VPN_CONFIG_PARAMS, bot, cid, message_id)
         bot.answer_callback_query(call.id)
         return True
 
@@ -522,7 +526,8 @@ def handle_vpn_config_callback(bot, cid, call, data):
         draft = _DRAFTS.get(key)
         if not draft or draft.get("protocol") != protocol:
             bot.answer_callback_query(
-                call.id, "Черновик не найден. Начни настройку заново.",
+                call.id,
+                "Черновик не найден. Начни настройку заново.",
                 show_alert=True,
             )
             return True
@@ -530,9 +535,7 @@ def handle_vpn_config_callback(bot, cid, call, data):
         bot.clear_step_handler_by_chat_id(cid)
         _SCREEN_MESSAGES.pop(str(cid), None)
         navigation.go(cid, ADMIN_VPN_CONFIG_CONFIRM)
-        navigation.render(
-            ADMIN_VPN_CONFIG_CONFIRM, bot, cid, message_id
-        )
+        navigation.render(ADMIN_VPN_CONFIG_CONFIRM, bot, cid, message_id)
         bot.answer_callback_query(call.id)
         return True
 
@@ -574,9 +577,7 @@ def handle_vpn_config_callback(bot, cid, call, data):
         elif protocol == "awg":
             result = setup_awg_server(**params)
         else:
-            bot.answer_callback_query(
-                call.id, "Неизвестный протокол", show_alert=True
-            )
+            bot.answer_callback_query(call.id, "Неизвестный протокол", show_alert=True)
             return True
 
         _DRAFTS.pop(key, None)
@@ -588,9 +589,7 @@ def handle_vpn_config_callback(bot, cid, call, data):
         )
 
         navigation.replace(cid, ADMIN_VPN_CONFIG_RESULT)
-        navigation.render(
-            ADMIN_VPN_CONFIG_RESULT, bot, cid, message_id
-        )
+        navigation.render(ADMIN_VPN_CONFIG_RESULT, bot, cid, message_id)
         bot.answer_callback_query(call.id)
         return True
 

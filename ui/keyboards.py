@@ -569,7 +569,6 @@ def ai_diagnosis_menu_kb():
     return kb
 
 
-
 def vpn_config_menu_kb(protocols=None):
     """Выбор VPN-протокола: два варианта в одной строке."""
     if protocols is None:
@@ -624,8 +623,7 @@ def vpn_config_confirm_kb(protocol, replacing=False):
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton(
-            "⚠️ Подтвердить перенастройку"
-            if replacing else "✅ Создать конфиг",
+            "⚠️ Подтвердить перенастройку" if replacing else "✅ Создать конфиг",
             callback_data=f"vpn_config:confirm:{protocol}",
         )
     )

@@ -325,6 +325,7 @@ class TestPassportCheck:
 
         assert result is False
 
+
 class TestOptionalPassportComponents:
     """Опциональные Xray и AmneziaWG не должны делать Passport FAIL."""
 
@@ -390,6 +391,7 @@ class TestOptionalPassportComponents:
     def test_awg_installed(self, binary, interfaces):
         assert is_awg_installed(binary, interfaces)
 
+
 class TestTrafficTimerStatus:
     @pytest.mark.parametrize(
         (
@@ -419,9 +421,12 @@ class TestTrafficTimerStatus:
         timer_active,
         expected,
     ):
-        assert traffic_timer_status(
-            xray_installed,
-            awg_installed,
-            timer_enabled,
-            timer_active,
-        ) == expected
+        assert (
+            traffic_timer_status(
+                xray_installed,
+                awg_installed,
+                timer_enabled,
+                timer_active,
+            )
+            == expected
+        )

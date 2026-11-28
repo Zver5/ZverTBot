@@ -191,9 +191,7 @@ def get_awg_raw_stats():
             registry = {}
 
         by_ip = {
-            peer.allowed_ip: peer
-            for peer in runtime_peers.values()
-            if peer.allowed_ip
+            peer.allowed_ip: peer for peer in runtime_peers.values() if peer.allowed_ip
         }
 
         result = {}

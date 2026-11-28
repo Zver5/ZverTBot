@@ -107,22 +107,19 @@ def get_services_status():
         "zvertbot-vps-monitor",
         "fail2ban",
     ]:
-        status[service] = build_status(service)
+        status[f"{service}.service"] = build_status(service)
 
-    awg_units = [
-        unit for unit in list_service_units()
-        if "awg-quick@" in unit
-    ]
+    awg_units = [unit for unit in list_service_units() if "awg-quick@" in unit]
 
     for unit in awg_units:
-        status[unit] = build_status(unit, known_exists=True)
+        status[f"{unit}.service"] = build_status(unit, known_exists=True)
 
     # AWG can be installed with a config but without a loaded systemd instance.
     if not awg_units:
         awg_conf = Path("/etc/amnezia/amneziawg/awg0.conf")
 
         if awg_conf.is_file():
-            status["awg"] = {"status": 0, "uptime": None}
+            status["awg-quick@awg0.service"] = {"status": 0, "uptime": None}
 
     return status
 
@@ -205,17 +202,13 @@ def _collect_system_runtime():
 
         swap_used_mb = swap_used_kb // 1024
         swap_percent = (
-            round(swap_used_kb / swap_total * 100, 1)
-            if swap_total > 0
-            else 0.0
+            round(swap_used_kb / swap_total * 100, 1) if swap_total > 0 else 0.0
         )
     except (OSError, ValueError, IndexError) as exc:
         logger.warning("vps_stats.swap.read_failed | error=%s", exc)
 
     try:
-        process_count = sum(
-            1 for entry in os.listdir("/proc") if entry.isdigit()
-        )
+        process_count = sum(1 for entry in os.listdir("/proc") if entry.isdigit())
     except OSError as exc:
         logger.warning("vps_stats.process_count.read_failed | error=%s", exc)
         process_count = 0
@@ -271,9 +264,7 @@ def collect_stats():
             usage_clients = {}
 
         vpn_total_bytes = sum(
-            c.get("total", 0)
-            for c in usage_clients.values()
-            if isinstance(c, dict)
+            c.get("total", 0) for c in usage_clients.values() if isinstance(c, dict)
         )
         vpn_total_gb = round(vpn_total_bytes / 1073741824, 2)
     except Exception as exc:
@@ -422,9 +413,7 @@ def collect_stats():
     try:
         cfg = load_xray_config()
         for client in get_all_clients(cfg):
-            xray_clients_raw.append(
-                {"name": client["name"], "id": client["id"]}
-            )
+            xray_clients_raw.append({"name": client["name"], "id": client["id"]})
 
     except (FileNotFoundError, ValueError) as exc:
         logger.warning("vps_stats.xray_config.load_failed | error=%s", exc)
@@ -526,12 +515,10 @@ def collect_stats():
                 "downlink": client_usage.get("downlink", 0),
                 "uplink": client_usage.get("uplink", 0),
                 "total": fmt_size(
-                    client_usage.get("downlink", 0)
-                    + client_usage.get("uplink", 0)
+                    client_usage.get("downlink", 0) + client_usage.get("uplink", 0)
                 ),
                 "total_bytes": (
-                    client_usage.get("downlink", 0)
-                    + client_usage.get("uplink", 0)
+                    client_usage.get("downlink", 0) + client_usage.get("uplink", 0)
                 ),
                 "online": is_online,
                 "hs": "active" if is_online else "offline",

@@ -24,10 +24,13 @@ def create_backup() -> str:
 
 
 def restart_xray() -> None:
-    active = subprocess.run(
-        ["systemctl", "is-active", "--quiet", "xray.service"],
-        check=False,
-    ).returncode == 0
+    active = (
+        subprocess.run(
+            ["systemctl", "is-active", "--quiet", "xray.service"],
+            check=False,
+        ).returncode
+        == 0
+    )
 
     if active:
         subprocess.run(

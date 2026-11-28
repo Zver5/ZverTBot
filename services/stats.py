@@ -26,9 +26,7 @@ EXTERNAL_MONITOR_CACHE_FILE = DATA_DIR / "vps_external_monitor.json"
 
 def _load_external_monitor_cache() -> dict:
     try:
-        data = json.loads(
-            EXTERNAL_MONITOR_CACHE_FILE.read_text(encoding="utf-8")
-        )
+        data = json.loads(EXTERNAL_MONITOR_CACHE_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
 
@@ -66,9 +64,7 @@ def _build_external_monitor_lines() -> list[str]:
         if healthy and latency is not None:
             details = f"{details} · {latency} мс"
 
-        lines.append(
-            f"{status_icon} {icon} {name} · {details or 'нет данных'}"
-        )
+        lines.append(f"{status_icon} {icon} {name} · {details or 'нет данных'}")
 
     return lines
 
@@ -141,8 +137,7 @@ def _build_status_text():
         external_section = ""
         if external_lines:
             external_section = (
-                f"{NL}{NL}🌐 *ВНЕШНИЕ СЕРВИСЫ*{NL}"
-                f"{NL}{NL.join(external_lines)}"
+                f"{NL}{NL}🌐 *ВНЕШНИЕ СЕРВИСЫ*{NL}{NL}{NL.join(external_lines)}"
             )
 
         return (

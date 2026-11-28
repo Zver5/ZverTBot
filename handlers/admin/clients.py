@@ -556,9 +556,7 @@ def handle_qr_config_callback(bot, cid, call, data):
         if proto not in ("vless", "awg"):
             return CallbackResponse("❌ Неизвестный протокол")
 
-        callback_response = CallbackResponse(
-            f"📄 Отправляю конфиг для {username}"
-        )
+        callback_response = CallbackResponse(f"📄 Отправляю конфиг для {username}")
 
         send_qr_or_conf(
             bot,

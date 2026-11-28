@@ -139,10 +139,7 @@ def scan_open_ports():
 
         for p in open_ports:
             port = p["port"]
-            if (
-                port in expected_ports
-                and p["proto"] == expected_ports[port]["proto"]
-            ):
+            if port in expected_ports and p["proto"] == expected_ports[port]["proto"]:
                 exp = expected_ports[port]
                 expected_found.append(
                     {

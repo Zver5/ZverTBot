@@ -34,14 +34,21 @@ def get_awg_server_params() -> tuple[str, dict]:
             if key in fields
         }
         required = {
-            "jc", "jmin", "jmax", "s1", "s2", "s3", "s4",
-            "h1", "h2", "h3", "h4",
+            "jc",
+            "jmin",
+            "jmax",
+            "s1",
+            "s2",
+            "s3",
+            "s4",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
         }
         missing = required - params.keys()
         if missing:
-            raise ValueError(
-                "AWG parameters not found: " + ", ".join(sorted(missing))
-            )
+            raise ValueError("AWG parameters not found: " + ", ".join(sorted(missing)))
         if not private_key:
             raise ValueError("PrivateKey not found")
 
@@ -69,9 +76,7 @@ def get_awg_server_params() -> tuple[str, dict]:
             "h3": "H3",
             "h4": "H4",
         }
-        return srv_pub, {
-            output_keys[key]: value for key, value in params.items()
-        }
+        return srv_pub, {output_keys[key]: value for key, value in params.items()}
     except OSError as e:
         raise ValueError(f"Cannot read AWG server config: {e}") from e
 

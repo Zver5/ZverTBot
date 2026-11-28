@@ -24,10 +24,12 @@ def test_record_stat_action_is_thread_safe(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "BOT_STATS_FILE", str(stats_file))
 
     with ThreadPoolExecutor(max_workers=8) as executor:
-        list(executor.map(
-            storage.record_stat_action,
-            [" /status "] * 100,
-        ))
+        list(
+            executor.map(
+                storage.record_stat_action,
+                [" /status "] * 100,
+            )
+        )
 
     stats = storage.load_stats()
     assert stats["commands"]["/status"] == 100

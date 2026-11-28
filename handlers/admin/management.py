@@ -58,7 +58,7 @@ from utils.service_control import (
 )
 
 BACKUP_TIMEOUT = 300
-STATUS_AUTO_DELETE = 12
+STATUS_AUTO_DELETE = 25
 
 # ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ЗАПУСКА В ПОТОКЕ ----------
 
@@ -721,9 +721,11 @@ def run_manual_backup(bot, cid, message_id):
                     else:
                         import re
 
-                        error = str(
-                            status.get("error") or "Причина ошибки не сохранена"
-                        ).replace("`", "'").replace("\\n", " ")
+                        error = (
+                            str(status.get("error") or "Причина ошибки не сохранена")
+                            .replace("`", "'")
+                            .replace("\\n", " ")
+                        )
 
                         # rclone повторяет одну причину для каждой попытки.
                         # Показываем первую фактическую ошибку без повторов.
@@ -743,12 +745,8 @@ def run_manual_backup(bot, cid, message_id):
 
                         error = error[:700]
 
-                        is_yandex_unavailable = (
-                            "410" in error
-                            and (
-                                "GoneError" in error
-                                or "Ресурс больше недоступен" in error
-                            )
+                        is_yandex_unavailable = "410" in error and (
+                            "GoneError" in error or "Ресурс больше недоступен" in error
                         )
 
                         if is_yandex_unavailable:
@@ -944,11 +942,7 @@ def handle_ai_diagnosis_callback(bot, cid, call, data):
             logs = get_service_logs(service_name)
             monitoring_facts = collect_monitoring_facts_for_service(service_name)
 
-            analysis_input = (
-                monitoring_facts
-                + "\n\n"
-                + logs
-            )
+            analysis_input = monitoring_facts + "\n\n" + logs
 
             result = analyze_logs_with_llm(
                 analysis_input,

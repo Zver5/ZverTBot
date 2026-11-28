@@ -143,7 +143,6 @@ def test_xray_add_user_success(monkeypatch):
 
     monkeypatch.setattr(cm, "save_xray_config", lambda cfg: saved.append(cfg))
 
-
     monkeypatch.setattr(cm, "reload_xray", lambda: None)
 
     ok, uuid = cm.xray_add_user("user")

@@ -62,6 +62,7 @@ def test_bot_stats_exception(mock_load):
     assert "Ошибка чтения статистики" in text
     assert "boom" in text
 
+
 @patch("services.stats.load_stats")
 def test_bot_stats_localizes_legacy_and_navigation_actions(mock_load):
     mock_load.return_value = {

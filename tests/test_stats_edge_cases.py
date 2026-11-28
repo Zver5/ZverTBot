@@ -25,7 +25,6 @@ def test_status_cache_public(monkeypatch, tmp_path):
     assert "VPS ОТЧЕТ" in text
 
 
-
 def test_awg_without_ip(monkeypatch):
     monkeypatch.setattr(st, "load_awg_registry", lambda: {"user": {}})
 

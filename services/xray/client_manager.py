@@ -29,7 +29,6 @@ def reload_xray():
     restart_service("xray")
 
 
-
 @client_operation_lock
 def xray_add_user(username: str) -> tuple[bool, str]:
     """

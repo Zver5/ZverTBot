@@ -51,24 +51,21 @@ def test_optional_services_are_started():
     assert not missing, f"Optional services missing from startup list: {missing}"
 
 
-
 def test_traffic_collector_is_enabled_for_xray_or_awg():
-    start = INSTALL.index('    OPTIONAL_DIR=')
+    start = INSTALL.index("    OPTIONAL_DIR=")
     end = INSTALL.index('    ok "Systemd services installed"', start)
     optional_block = INSTALL[start:end]
 
     assert (
         'if [[ "$name" == xray-traffic.* && "$INSTALL_XRAY" != true '
-        '&& "$INSTALL_AWG" != true ]]; then'
-        in optional_block
+        '&& "$INSTALL_AWG" != true ]]; then' in optional_block
     )
     assert (
         'if [ "$INSTALL_XRAY" = true ] || [ "$INSTALL_AWG" = true ]; then'
         in optional_block
     )
     assert (
-        'OPTIONAL_SERVICES="xray-traffic.timer\n${OPTIONAL_SERVICES}"'
-        in optional_block
+        'OPTIONAL_SERVICES="xray-traffic.timer\n${OPTIONAL_SERVICES}"' in optional_block
     )
 
     xray_start = INSTALL.index(
@@ -147,10 +144,10 @@ def test_xray_access_log_permissions_are_managed_by_installer():
     assert 'chown xray:xray "$XRAY_ACCESS_LOG"' in function
     assert 'chmod 600 "$XRAY_ACCESS_LOG"' in function
     assert 'if [ -L "$XRAY_ACCESS_LOG" ]; then' in function
-    assert 'LogsDirectory=xray' in function
-    assert 'LogsDirectoryMode=0700' in function
-    assert '98-zvertbot-logs.conf' in function
-    assert 'systemctl daemon-reload' in function
+    assert "LogsDirectory=xray" in function
+    assert "LogsDirectoryMode=0700" in function
+    assert "98-zvertbot-logs.conf" in function
+    assert "systemctl daemon-reload" in function
 
     assert 'verify_value "Xray log directory permissions"' in function
     assert 'verify_value "Xray access log permissions"' in function

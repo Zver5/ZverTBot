@@ -92,9 +92,7 @@ def _parse_show_output(output: str) -> dict[str, AwgPeerRuntime]:
                 allowed_ip=str(current.get("allowed_ip", "")),
                 rx_bytes=int(current.get("rx_bytes", 0)),
                 tx_bytes=int(current.get("tx_bytes", 0)),
-                latest_handshake=str(
-                    current.get("latest_handshake", "never")
-                ),
+                latest_handshake=str(current.get("latest_handshake", "never")),
             )
         current = None
 
@@ -118,13 +116,9 @@ def _parse_show_output(output: str) -> dict[str, AwgPeerRuntime]:
             continue
 
         if lower.startswith("endpoint:"):
-            current["endpoint"] = _normalize_endpoint(
-                line.split(":", 1)[1]
-            )
+            current["endpoint"] = _normalize_endpoint(line.split(":", 1)[1])
         elif lower.startswith("allowed ips:"):
-            current["allowed_ip"] = (
-                line.split(":", 1)[1].strip().split("/", 1)[0]
-            )
+            current["allowed_ip"] = line.split(":", 1)[1].strip().split("/", 1)[0]
         elif lower.startswith("latest handshake:"):
             current["latest_handshake"] = line.split(":", 1)[1].strip()
         elif lower.startswith("transfer:"):

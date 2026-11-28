@@ -507,6 +507,7 @@ def test_get_xray_readiness_detects_missing_reality_fields():
     assert any("не указан serverNames" in p for p in problems)
     assert any("не указан shortIds" in p for p in problems)
 
+
 def test_get_all_clients_supports_all_xray_protocols():
     config = {
         "inbounds": [
@@ -548,7 +549,6 @@ def test_get_all_clients_supports_all_xray_protocols():
         ("shadowsocks", "ss-user"),
         ("trojan", "trojan-user"),
     }
-
 
 
 def test_normalize_xray_api_config_removes_legacy_outbound_and_preserves_users():
@@ -607,9 +607,7 @@ def test_normalize_xray_api_config_removes_legacy_outbound_and_preserves_users()
     assert any(item.get("tag") == "api" for item in config["outbounds"])
 
 
-def test_normalize_xray_config_enables_user_stats_and_access_log(
-    monkeypatch, tmp_path
-):
+def test_normalize_xray_config_enables_user_stats_and_access_log(monkeypatch, tmp_path):
     access_log = tmp_path / "xray-access.log"
     monkeypatch.setattr(cm, "XRAY_ACCESS_LOG", access_log)
 
@@ -643,11 +641,7 @@ def test_normalize_xray_config_enables_user_stats_and_access_log(
 
 
 def test_normalize_xray_config_adds_default_level_when_no_vless_clients():
-    config = {
-        "inbounds": [
-            {"protocol": "vless", "settings": {"clients": []}}
-        ]
-    }
+    config = {"inbounds": [{"protocol": "vless", "settings": {"clients": []}}]}
 
     normalized = cm.normalize_xray_api_config(config)
 

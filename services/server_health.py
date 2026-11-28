@@ -38,9 +38,7 @@ def collect_monitoring_facts() -> str:
     for result in results:
         status = "OK" if result.healthy else "FAIL"
         failure = (
-            f" | failure={result.failure.value}"
-            if result.failure is not None
-            else ""
+            f" | failure={result.failure.value}" if result.failure is not None else ""
         )
         details = result.details or "no details"
         facts.append(
@@ -143,7 +141,6 @@ def collect_server_health() -> str:
     return "\n".join(parts)
 
 
-
 SERVICE_MONITOR_NAMES = {
     "bot": "zvertbot",
     "xray": "xray",
@@ -193,6 +190,7 @@ def collect_monitoring_facts_for_service(service_name: str) -> str:
         lines.append(line)
 
     return "\n".join(lines)
+
 
 def collect_server_health_for_ai() -> str:
     """Добавляет к отчёту сервера подтверждённые результаты мониторинга."""
